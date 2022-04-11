@@ -4,14 +4,14 @@ SEOTitle: 李钱江的博客 | River Blog
 header-img: img/post-bg-cook.jpg
 email: 755087768river@gmail.com
 description: "You have your plan, the world has another"
-keyword: "River, River Blog, 李钱江的博客, liqianjiang, 邱柏荧,android"
+keyword: "River, River Blog, 李钱江的博客, liqianjiang, android"
 url: "https://liqianjiang.github.io"          # your host, for absolute URL
 baseurl: ""      # for example, '/blog' if your blog hosted on 'host/blog'
 github_repo: "https://github.com/liqianjiang/liqianjiang.github.io.git" # you code repository
 
 # Sidebar settings
 sidebar: true                           # whether or not using Sidebar.
-sidebar-about-description: "成功才是成功之母"
+sidebar-about-description: "莫道桑榆晚，为霞尚满天"
 sidebar-avatar: /img/about_river_gentle.jpeg      # use absolute URL, seeing it's used in both `/` and `/about/`
 
 
