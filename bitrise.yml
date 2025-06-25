@@ -1,0 +1,3247 @@
+---
+format_version: '6'
+default_step_lib_source: https://github.com/bitrise-io/bitrise-steplib.git
+project_type: android
+workflows:
+  android-qa:
+    steps:
+    - set-java-version@1:
+        inputs:
+        - set_java_version: '17'
+    - activate-ssh-key@4:
+        run_if: '{{getenv "SSH_RSA_PRIVATE_KEY" | ne ""}}'
+    - git-clone@8.1: {}
+    - cache-pull@2: {}
+    - script@1:
+        title: Do anything with Script step
+    - file-downloader@1:
+        inputs:
+        - destination: "$ANDROID_KEYSTORE_URL"
+        - source: "$BITRISEIO_ANDROID_KEYSTORE_URL"
+    - script@1:
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            # fail if any commands fails
+            set -e
+            # make pipelines' return status equal the last command to exit with a non-zero status, or zero if all commands exit successfully
+            set -o pipefail
+            # debug log
+            set -x
+
+            # write your script here
+            #!/bin/bash
+
+            fileName="Coins/coins/build.gradle"
+
+            GLOBAL_APP_VERSION=$(grep -m 1 -w "GLOBAL_APP_VERSION =" $fileName | tr -cd "[0-9]")
+            echo "GLOBAL_APP_VERSION=${GLOBAL_APP_VERSION}"
+
+            MAJOR_FEATURE_VERSION=$(grep -m 1 -w "var MAJOR_FEATURE_VERSION =" $fileName | tr -cd "[0-9]")
+            echo "MAJOR_FEATURE_VERSION=${MAJOR_FEATURE_VERSION}"
+
+            MINOR_FEATURE_VERSION=$(grep -m 1 -w "var MINOR_FEATURE_VERSION =" $fileName | tr -cd "[0-9]")
+            echo "MINOR_FEATURE_VERSION=${MINOR_FEATURE_VERSION}"
+
+            BUGFIX_VERSION=$(grep -m 1 -w "var BUGFIX_VERSION =" $fileName | tr -cd "[0-9]")
+            echo "BUGFIX_VERSION=${BUGFIX_VERSION}"
+
+            version=$BITRISE_GIT_MESSAGE
+            echo "inputVersion=${version}"
+
+            if [[ $version =~ ^(v|version-)+[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              echo "✅ It must start with 'v' or 'version-' and be followed by a four-digit version number."
+              index=$(echo "$version" | grep -bo '[0-9]' | head -n 1 | cut -d: -f1)
+
+              if [ -n "$index" ]; then
+                result="${version:$index}"
+                echo "result: $result"
+                IFS='.' read -r -a arr <<<"$result"
+
+                len=${#arr[@]}
+
+                if [ ${#arr[@]} -eq 4 ]; then
+                  for ((i = 0; i < len; i++)); do
+                    if [ "$i" -eq 0 ]; then
+                      old="GLOBAL_APP_VERSION = ${GLOBAL_APP_VERSION}"
+                      new="GLOBAL_APP_VERSION = ${arr[$i]}"
+                      sed -i  "s/$old/$new/g" $fileName
+                    elif [ "$i" -eq 1 ]; then
+                      old="MAJOR_FEATURE_VERSION = ${MAJOR_FEATURE_VERSION}"
+                      new="MAJOR_FEATURE_VERSION = ${arr[$i]}"
+                      sed -i  "s/$old/$new/g" $fileName
+                    elif [ "$i" -eq 2 ]; then
+                      old="MINOR_FEATURE_VERSION = ${MINOR_FEATURE_VERSION}"
+                      new="MINOR_FEATURE_VERSION = ${arr[$i]}"
+                      sed -i "s/$old/$new/g" $fileName
+                    elif [ "$i" -eq 3 ]; then
+                      old="BUGFIX_VERSION = ${BUGFIX_VERSION}"
+                      new="BUGFIX_VERSION = ${arr[$i]}"
+                      sed -i "s/$old/$new/g" $fileName
+                    else
+                      old="BUGFIX_VERSION = ${BUGFIX_VERSION}"
+                      new="BUGFIX_VERSION = ${arr[$i]}"
+                      sed -i "s/$old/$new/g" $fileName
+                    fi
+                  done
+                else
+                  echo "The version format is not 4 digits"
+                fi
+              else
+                echo "not found '.'"
+              fi
+            else
+              echo "❌ Does not conform to the format, must start with 'v' or 'version-', suffixed with a four-digit version number"
+            fi
+
+            # or run a script from your repository, like:
+            # bash ./path/to/script.sh
+            # not just bash, e.g.:
+            # ruby ./path/to/script.rb
+        title: Modify the version
+    - script@1:
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            # fail if any commands fails
+            set -e
+            # make pipelines' return status equal the last command to exit with a non-zero status, or zero if all commands exit successfully
+            set -o pipefail
+            # debug log
+            set -x
+
+            # write your script here
+            echo "Hello World!"
+
+            current_dir=$(pwd)
+            echo "current_dir=${current_dir}"
+
+            folders=$(ls -l | grep '^d' | awk '{print $9}')
+
+            echo "$folders"
+
+            # or run a script from your repository, like:
+            # bash ./path/to/script.sh
+            # not just bash, e.g.:
+            # ruby ./path/to/script.rb
+
+            GLOBAL_APP_VERSION=$(grep -m 1 -w "var GLOBAL_APP_VERSION ="  Coins/coins/build.gradle | tr -cd "[0-9]")
+            echo "GLOBAL_APP_VERSION=${GLOBAL_APP_VERSION}"
+
+            MAJOR_FEATURE_VERSION=$(grep -m 1 -w "var MAJOR_FEATURE_VERSION =" Coins/coins/build.gradle | tr -cd "[0-9]")
+            echo "MAJOR_FEATURE_VERSION=${MAJOR_FEATURE_VERSION}"
+
+            MINOR_FEATURE_VERSION=$(grep -m 1 -w "var MINOR_FEATURE_VERSION =" Coins/coins/build.gradle | tr -cd "[0-9]")
+            echo "MINOR_FEATURE_VERSION=${MINOR_FEATURE_VERSION}"
+
+            BUGFIX_VERSION=$(grep -m 1 -w "var BUGFIX_VERSION =" Coins/coins/build.gradle | tr -cd "[0-9]")
+            echo "BUGFIX_VERSION=${BUGFIX_VERSION}"
+
+            appVersion="${GLOBAL_APP_VERSION}.${MAJOR_FEATURE_VERSION}.${MINOR_FEATURE_VERSION}.${BUGFIX_VERSION}"
+
+            envman add --key Coins_Android_App_Version --value "$appVersion"
+
+            echo "appVersion=${appVersion}"
+        title: Read the version
+    - slack@4:
+        inputs:
+        - channel: C072299UL5U
+        - pretext: "*Build Start!! :rocket::rocket::rocket:"
+        - webhook_url_on_error: "$SLACK_WEB_HOOK_URL_ANDROID"
+        - channel_on_error: C072299UL5U
+        - text_on_error: "*Build FAILED!! :catcrying::catcrying::catcrying:"
+        - buttons: |
+            View App|${BITRISE_APP_URL}
+            View Pipeline Build|${BITRISEIO_PIPELINE_BUILD_URL}
+            View Workflow Build|${BITRISE_BUILD_URL}
+        - fields: |
+            Version|${Coins_Android_App_Version}
+            App|${BITRISE_APP_TITLE}
+            Branch|${BITRISE_GIT_BRANCH}
+            Pipeline|${BITRISEIO_PIPELINE_TITLE}
+            Workflow|${BITRISE_TRIGGERED_WORKFLOW_ID}
+        - webhook_url: "$SLACK_WEB_HOOK_URL_ANDROID"
+    - install-missing-android-tools@3:
+        inputs:
+        - gradlew_path: "$PROJECT_LOCATION/gradlew"
+    - android-build@1:
+        inputs:
+        - module: "$MODULE"
+        - variant: "$PL_VARIANT_QA_RELEASE"
+        - project_location: "$PROJECT_LOCATION"
+    - android-build@1:
+        inputs:
+        - module: "$MODULE"
+        - variant: "$PL_VARIANT_QA_DEBUG"
+        - project_location: "$PROJECT_LOCATION"
+    - deploy-to-bitrise-io@2: {}
+    - cache-push@2: {}
+    - slack@4:
+        inputs:
+        - channel: C072299UL5U
+        - pretext:
+        - webhook_url_on_error: "$SLACK_WEB_HOOK_URL_ANDROID"
+        - text_on_error: 'Build Failed!! :catcrying::catcrying::catcrying:'
+        - pretext_on_error: "*Build Failed!* :catcrying::catcrying::catcrying:"
+        - buttons: |
+            View App|${BITRISE_APP_URL}
+            View Pipeline Build|${BITRISEIO_PIPELINE_BUILD_URL}
+            View Workflow Build|${BITRISE_BUILD_URL}
+        - fields: |
+            Version|${Coins_Android_App_Version}
+            App|${BITRISE_APP_TITLE}
+            Branch|${BITRISE_GIT_BRANCH}
+            Pipeline|${BITRISEIO_PIPELINE_TITLE}
+            Workflow|${BITRISE_TRIGGERED_WORKFLOW_ID}
+        - text: "@amber *Build Succeeded!!:tada::tada::tada:"
+        - webhook_url: "$SLACK_WEB_HOOK_URL_ANDROID"
+    envs:
+    - ANDROID_KEYSTORE_URL: "$HOME/keystores/upload.jks"
+    - opts:
+        is_expand: false
+      PL_VARIANT_QA_RELEASE: QaRelease
+    - opts:
+        is_expand: false
+      PL_VARIANT_QA_DEBUG: QaDebug
+    pl-google-qa:
+  Automation:
+    steps:
+    - set-java-version@1:
+        inputs:
+        - set_java_version: '17'
+    - activate-ssh-key@4:
+        run_if: '{{getenv "SSH_RSA_PRIVATE_KEY" | ne ""}}'
+    - git-clone@6: {}
+    - cache-pull@2: {}
+    - script@1:
+        title: Do anything with Script step
+    - file-downloader@1:
+        inputs:
+        - destination: "$ANDROID_KEYSTORE_URL"
+        - source: "$BITRISEIO_ANDROID_KEYSTORE_URL"
+    - install-missing-android-tools@3:
+        inputs:
+        - gradlew_path: "$PROJECT_LOCATION/gradlew"
+    - android-build@1:
+        inputs:
+        - module: "$MODULE"
+        - variant: "$TEST_VARIANT"
+        - project_location: "$PROJECT_LOCATION"
+    - script@1:
+        title: Rename apk artifact
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            # fail if any commands fails
+            set -e
+            # debug log
+            set -x
+
+            # write your script here
+            new_apk_path="${BITRISE_DEPLOY_DIR}/Coins.apk"
+
+            # rename the ipa
+            mv "$BITRISE_APK_PATH" "$new_apk_path"
+            envman add --key CUSTOM_BUILD_SLUG --value "${BITRISE_BUILD_SLUG}"
+            envman add --key ANDROIDAPINAME --value "android-29"
+            envman add --key ANDROIDVERSION --value "10"
+
+            # or run a script from your repository, like:
+            # bash ./path/to/script.sh
+            # not just bash, e.g.:
+            # ruby ./path/to/script.rb
+    - deploy-to-bitrise-io@2: {}
+    - cache-push@2: {}
+    - trigger-bitrise-workflow@0.0.8:
+        inputs:
+        - branch: master
+        - workflow_id: Android
+        - exported_environment_variable_names: CUSTOM_BUILD_SLUG|ANDROIDAPINAME|ANDROIDVERSION
+        - api_token: "$AUTOMATION_TRIGGER_TOKEN"
+        - app_slug: "$AUTOMATION_BUILD_SLUG"
+    - script@1:
+        title: Update ENV to API 27
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            # fail if any commands fails
+            set -e
+            # debug log
+            set -x
+
+            # write your script here
+            envman add --key ANDROIDVERSION --value "8.1"
+            envman add --key ANDROIDAPINAME --value "android-27"
+
+            # or run a script from your repository, like:
+            # bash ./path/to/script.sh
+            # not just bash, e.g.:
+            # ruby ./path/to/script.rb
+    - trigger-bitrise-workflow@0.0.8:
+        inputs:
+        - branch: master
+        - workflow_id: Android
+        - exported_environment_variable_names: CUSTOM_BUILD_SLUG|ANDROIDVERSION|ANDROIDAPINAME
+        - api_token: "$AUTOMATION_TRIGGER_TOKEN"
+        - app_slug: "$AUTOMATION_BUILD_SLUG"
+    - script@1:
+        title: Update ENV to API 25
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            # fail if any commands fails
+            set -e
+            # debug log
+            set -x
+
+            # write your script here
+            envman add --key ANDROIDAPINAME --value "android-27"
+            envman add --key ANDROIDVERSION --value "7.1"
+
+            # or run a script from your repository, like:
+            # bash ./path/to/script.sh
+            # not just bash, e.g.:
+            # ruby ./path/to/script.rb
+    - trigger-bitrise-workflow@0.0.8:
+        inputs:
+        - branch: master
+        - workflow_id: Android
+        - exported_environment_variable_names: CUSTOM_BUILD_SLUG|ANDROIDVERSION|ANDROIDAPINAME
+        - api_token: "$AUTOMATION_TRIGGER_TOKEN"
+        - app_slug: "$AUTOMATION_BUILD_SLUG"
+    - trigger-bitrise-workflow@0.0.8:
+        inputs:
+        - branch: master
+        - api_token: "$AUTOMATION_TRIGGER_TOKEN"
+        - exported_environment_variable_names: CUSTOM_BUILD_SLUG
+        - app_slug: "$AUTOMATION_BUILD_SLUG"
+        - workflow_id: androidStaticAnalysis
+    envs:
+    - ANDROID_KEYSTORE_URL: "$HOME/keystores/upload.jks"
+  flavor-test-googleprod:
+    steps:
+    - set-java-version@1:
+        inputs:
+        - set_java_version: '17'
+    - activate-ssh-key@4:
+        run_if: '{{getenv "SSH_RSA_PRIVATE_KEY" | ne ""}}'
+    - git-clone@6: {}
+    - cache-pull@2: {}
+    - script@1:
+        title: Do anything with Script step
+    - file-downloader@1:
+        inputs:
+        - destination: "$ANDROID_KEYSTORE_URL"
+        - source: "$BITRISEIO_ANDROID_KEYSTORE_URL"
+    - script@1:
+        title: Modify the version
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            # fail if any commands fails
+            set -e
+            # make pipelines' return status equal the last command to exit with a non-zero status, or zero if all commands exit successfully
+            set -o pipefail
+            # debug log
+            set -x
+
+            # write your script here
+            #!/bin/bash
+
+            fileName="Coins/coins/build.gradle"
+
+            GLOBAL_APP_VERSION=$(grep -m 1 -w "GLOBAL_APP_VERSION =" $fileName | tr -cd "[0-9]")
+            echo "GLOBAL_APP_VERSION=${GLOBAL_APP_VERSION}"
+
+            MAJOR_FEATURE_VERSION=$(grep -m 1 -w "var MAJOR_FEATURE_VERSION =" $fileName | tr -cd "[0-9]")
+            echo "MAJOR_FEATURE_VERSION=${MAJOR_FEATURE_VERSION}"
+
+            MINOR_FEATURE_VERSION=$(grep -m 1 -w "var MINOR_FEATURE_VERSION =" $fileName | tr -cd "[0-9]")
+            echo "MINOR_FEATURE_VERSION=${MINOR_FEATURE_VERSION}"
+
+            BUGFIX_VERSION=$(grep -m 1 -w "var BUGFIX_VERSION =" $fileName | tr -cd "[0-9]")
+            echo "BUGFIX_VERSION=${BUGFIX_VERSION}"
+
+            version=$BITRISE_GIT_MESSAGE
+            echo "inputVersion=${version}"
+
+            if [[ $version =~ ^(v|version-)+[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              echo "✅ It must start with 'v' or 'version-' and be followed by a four-digit version number."
+              index=$(echo "$version" | grep -bo '[0-9]' | head -n 1 | cut -d: -f1)
+
+              if [ -n "$index" ]; then
+                result="${version:$index}"
+                echo "result: $result"
+                IFS='.' read -r -a arr <<<"$result"
+
+                len=${#arr[@]}
+
+                if [ ${#arr[@]} -eq 4 ]; then
+                  for ((i = 0; i < len; i++)); do
+                    if [ "$i" -eq 0 ]; then
+                      old="GLOBAL_APP_VERSION = ${GLOBAL_APP_VERSION}"
+                      new="GLOBAL_APP_VERSION = ${arr[$i]}"
+                      sed -i  "s/$old/$new/g" $fileName
+                    elif [ "$i" -eq 1 ]; then
+                      old="MAJOR_FEATURE_VERSION = ${MAJOR_FEATURE_VERSION}"
+                      new="MAJOR_FEATURE_VERSION = ${arr[$i]}"
+                      sed -i  "s/$old/$new/g" $fileName
+                    elif [ "$i" -eq 2 ]; then
+                      old="MINOR_FEATURE_VERSION = ${MINOR_FEATURE_VERSION}"
+                      new="MINOR_FEATURE_VERSION = ${arr[$i]}"
+                      sed -i "s/$old/$new/g" $fileName
+                    elif [ "$i" -eq 3 ]; then
+                      old="BUGFIX_VERSION = ${BUGFIX_VERSION}"
+                      new="BUGFIX_VERSION = ${arr[$i]}"
+                      sed -i "s/$old/$new/g" $fileName
+                    else
+                      old="BUGFIX_VERSION = ${BUGFIX_VERSION}"
+                      new="BUGFIX_VERSION = ${arr[$i]}"
+                      sed -i "s/$old/$new/g" $fileName
+                    fi
+                  done
+                else
+                  echo "The version format is not 4 digits"
+                fi
+              else
+                echo "not found '.'"
+              fi
+            else
+              echo "❌ Does not conform to the format, must start with 'v' or 'version-', suffixed with a four-digit version number"
+            fi
+
+            # or run a script from your repository, like:
+            # bash ./path/to/script.sh
+            # not just bash, e.g.:
+            # ruby ./path/to/script.rb
+    - script@1:
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            # fail if any commands fails
+            set -e
+            # make pipelines' return status equal the last command to exit with a non-zero status, or zero if all commands exit successfully
+            set -o pipefail
+            # debug log
+            set -x
+
+            # write your script here
+            echo "Hello World!"
+
+            current_dir=$(pwd)
+            echo "current_dir=${current_dir}"
+
+            folders=$(ls -l | grep '^d' | awk '{print $9}')
+
+            echo "$folders"
+
+            # or run a script from your repository, like:
+            # bash ./path/to/script.sh
+            # not just bash, e.g.:
+            # ruby ./path/to/script.rb
+
+            GLOBAL_APP_VERSION=$(grep -m 1 -w "var GLOBAL_APP_VERSION ="  Coins/coins/build.gradle | tr -cd "[0-9]")
+            echo "GLOBAL_APP_VERSION=${GLOBAL_APP_VERSION}"
+
+            MAJOR_FEATURE_VERSION=$(grep -m 1 -w "var MAJOR_FEATURE_VERSION =" Coins/coins/build.gradle | tr -cd "[0-9]")
+            echo "MAJOR_FEATURE_VERSION=${MAJOR_FEATURE_VERSION}"
+
+            MINOR_FEATURE_VERSION=$(grep -m 1 -w "var MINOR_FEATURE_VERSION =" Coins/coins/build.gradle | tr -cd "[0-9]")
+            echo "MINOR_FEATURE_VERSION=${MINOR_FEATURE_VERSION}"
+
+            BUGFIX_VERSION=$(grep -m 1 -w "var BUGFIX_VERSION =" Coins/coins/build.gradle | tr -cd "[0-9]")
+            echo "BUGFIX_VERSION=${BUGFIX_VERSION}"
+
+            appVersion="${GLOBAL_APP_VERSION}.${MAJOR_FEATURE_VERSION}.${MINOR_FEATURE_VERSION}.${BUGFIX_VERSION}"
+
+            envman add --key Coins_Android_App_Version --value "$appVersion"
+
+            echo "appVersion=${appVersion}"
+        title: Read the version
+    - install-missing-android-tools@3:
+        inputs:
+        - gradlew_path: "$PROJECT_LOCATION/gradlew"
+    - android-lint@0:
+        inputs:
+        - module: "$MODULE"
+        - variant: "$PL_VARIANT_GOOGLE_PROD_RELEASE"
+        - project_location: "$PROJECT_LOCATION"
+    - android-build@1:
+        inputs:
+        - module: "$MODULE"
+        - variant: "$PL_VARIANT_GOOGLE_PROD_RELEASE"
+        - project_location: "$PROJECT_LOCATION"
+    - android-build@1:
+        inputs:
+        - module: "$MODULE"
+        - variant: "$PL_VARIANT_GOOGLE_PROD_DEBUG"
+        - project_location: "$PROJECT_LOCATION"
+    - deploy-to-bitrise-io@2: {}
+    - cache-push@2: {}
+    envs:
+    - ANDROID_KEYSTORE_URL: "$HOME/keystores/upload.jks"
+    - opts:
+        is_expand: false
+      PL_VARIANT_GOOGLE_PROD_RELEASE: GoogleProdRelease
+    - opts:
+        is_expand: false
+      PL_VARIANT_GOOGLE_PROD_DEBUG: GoogleProdDebug
+  flavor-test-googleqa:
+    steps:
+    - set-java-version@1:
+        inputs:
+        - set_java_version: '17'
+    - activate-ssh-key@4:
+        run_if: '{{getenv "SSH_RSA_PRIVATE_KEY" | ne ""}}'
+    - git-clone@8.1: {}
+    - cache-pull@2: {}
+    - script@1:
+        title: Do anything with Script step
+    - file-downloader@1:
+        inputs:
+        - destination: "$ANDROID_KEYSTORE_URL"
+        - source: "$BITRISEIO_ANDROID_KEYSTORE_URL"
+    - script@1:
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            # fail if any commands fails
+            set -e
+            # make pipelines' return status equal the last command to exit with a non-zero status, or zero if all commands exit successfully
+            set -o pipefail
+            # debug log
+            set -x
+
+            # write your script here
+            #!/bin/bash
+
+            fileName="Coins/coins/build.gradle"
+
+            GLOBAL_APP_VERSION=$(grep -m 1 -w "GLOBAL_APP_VERSION =" $fileName | tr -cd "[0-9]")
+            echo "GLOBAL_APP_VERSION=${GLOBAL_APP_VERSION}"
+
+            MAJOR_FEATURE_VERSION=$(grep -m 1 -w "var MAJOR_FEATURE_VERSION =" $fileName | tr -cd "[0-9]")
+            echo "MAJOR_FEATURE_VERSION=${MAJOR_FEATURE_VERSION}"
+
+            MINOR_FEATURE_VERSION=$(grep -m 1 -w "var MINOR_FEATURE_VERSION =" $fileName | tr -cd "[0-9]")
+            echo "MINOR_FEATURE_VERSION=${MINOR_FEATURE_VERSION}"
+
+            BUGFIX_VERSION=$(grep -m 1 -w "var BUGFIX_VERSION =" $fileName | tr -cd "[0-9]")
+            echo "BUGFIX_VERSION=${BUGFIX_VERSION}"
+
+            version=$BITRISE_GIT_MESSAGE
+            echo "inputVersion=${version}"
+
+            if [[ $version =~ ^(v|version-)+[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              echo "✅ It must start with 'v' or 'version-' and be followed by a four-digit version number."
+              index=$(echo "$version" | grep -bo '[0-9]' | head -n 1 | cut -d: -f1)
+
+              if [ -n "$index" ]; then
+                result="${version:$index}"
+                echo "result: $result"
+                IFS='.' read -r -a arr <<<"$result"
+
+                len=${#arr[@]}
+
+                if [ ${#arr[@]} -eq 4 ]; then
+                  for ((i = 0; i < len; i++)); do
+                    if [ "$i" -eq 0 ]; then
+                      old="GLOBAL_APP_VERSION = ${GLOBAL_APP_VERSION}"
+                      new="GLOBAL_APP_VERSION = ${arr[$i]}"
+                      sed -i  "s/$old/$new/g" $fileName
+                    elif [ "$i" -eq 1 ]; then
+                      old="MAJOR_FEATURE_VERSION = ${MAJOR_FEATURE_VERSION}"
+                      new="MAJOR_FEATURE_VERSION = ${arr[$i]}"
+                      sed -i  "s/$old/$new/g" $fileName
+                    elif [ "$i" -eq 2 ]; then
+                      old="MINOR_FEATURE_VERSION = ${MINOR_FEATURE_VERSION}"
+                      new="MINOR_FEATURE_VERSION = ${arr[$i]}"
+                      sed -i "s/$old/$new/g" $fileName
+                    elif [ "$i" -eq 3 ]; then
+                      old="BUGFIX_VERSION = ${BUGFIX_VERSION}"
+                      new="BUGFIX_VERSION = ${arr[$i]}"
+                      sed -i "s/$old/$new/g" $fileName
+                    else
+                      old="BUGFIX_VERSION = ${BUGFIX_VERSION}"
+                      new="BUGFIX_VERSION = ${arr[$i]}"
+                      sed -i "s/$old/$new/g" $fileName
+                    fi
+                  done
+                else
+                  echo "The version format is not 4 digits"
+                fi
+              else
+                echo "not found '.'"
+              fi
+            else
+              echo "❌ Does not conform to the format, must start with 'v' or 'version-', suffixed with a four-digit version number"
+            fi
+
+            # or run a script from your repository, like:
+            # bash ./path/to/script.sh
+            # not just bash, e.g.:
+            # ruby ./path/to/script.rb
+        title: Modify the version
+    - script@1:
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            # fail if any commands fails
+            set -e
+            # make pipelines' return status equal the last command to exit with a non-zero status, or zero if all commands exit successfully
+            set -o pipefail
+            # debug log
+            set -x
+
+            # write your script here
+            echo "Hello World!"
+
+            current_dir=$(pwd)
+            echo "current_dir=${current_dir}"
+
+            folders=$(ls -l | grep '^d' | awk '{print $9}')
+
+            echo "$folders"
+
+            # or run a script from your repository, like:
+            # bash ./path/to/script.sh
+            # not just bash, e.g.:
+            # ruby ./path/to/script.rb
+
+            GLOBAL_APP_VERSION=$(grep -m 1 -w "var GLOBAL_APP_VERSION ="  Coins/coins/build.gradle | tr -cd "[0-9]")
+            echo "GLOBAL_APP_VERSION=${GLOBAL_APP_VERSION}"
+
+            MAJOR_FEATURE_VERSION=$(grep -m 1 -w "var MAJOR_FEATURE_VERSION =" Coins/coins/build.gradle | tr -cd "[0-9]")
+            echo "MAJOR_FEATURE_VERSION=${MAJOR_FEATURE_VERSION}"
+
+            MINOR_FEATURE_VERSION=$(grep -m 1 -w "var MINOR_FEATURE_VERSION =" Coins/coins/build.gradle | tr -cd "[0-9]")
+            echo "MINOR_FEATURE_VERSION=${MINOR_FEATURE_VERSION}"
+
+            BUGFIX_VERSION=$(grep -m 1 -w "var BUGFIX_VERSION =" Coins/coins/build.gradle | tr -cd "[0-9]")
+            echo "BUGFIX_VERSION=${BUGFIX_VERSION}"
+
+            appVersion="${GLOBAL_APP_VERSION}.${MAJOR_FEATURE_VERSION}.${MINOR_FEATURE_VERSION}.${BUGFIX_VERSION}"
+
+            envman add --key Coins_Android_App_Version --value "$appVersion"
+
+            echo "appVersion=${appVersion}"
+        title: Read the version
+    - install-missing-android-tools@3:
+        inputs:
+        - gradlew_path: "$PROJECT_LOCATION/gradlew"
+    - android-build@1:
+        inputs:
+        - module: "$MODULE"
+        - variant: "$PL_VARIANT_GOOGLE_QA_RELEASE"
+        - project_location: "$PROJECT_LOCATION"
+    - android-build@1:
+        inputs:
+        - module: "$MODULE"
+        - variant: "$PL_VARIANT_GOOGLE_QA_DEBUG"
+        - project_location: "$PROJECT_LOCATION"
+    - deploy-to-bitrise-io@2: {}
+    - script@1:
+        inputs:
+        - content: "# #!/usr/bin/env bash
+
+            # # fail if any commands fails
+
+            # set -e
+
+            # # make pipelines' return status equal the last command to exit
+            with a non-zero status, or zero if all commands exit successfully
+
+            # set -o pipefail
+
+            # # debug log
+
+            # set -x
+
+
+            # #!/bin/bash
+
+
+            # SOURCE_BRANCH=\"feature/test_protect_branch\" \ 
+
+            # TARGET_BRANCH=\"test/7.9.3.0\"           \ 
+
+            # TAG_NAME=\"v1.0.0-t\"             \ 
+
+            # TAG_MESSAGE=\"Release version 1.0.0-t\"\ 
+
+
+            # # 拉取最新代码，确保是最新状态
+
+            # git fetch origin \"$TARGET_BRANCH\"
+
+
+            # # 切换到目标分支
+
+            # git checkout \"$TARGET_BRANCH\"
+
+
+            # # 合并源分支
+
+            # git merge --no-ff \"$SOURCE_BRANCH\" -m \"Merge branch
+            '$SOURCE_BRANCH' into '$TARGET_BRANCH'\"
+
+
+            # # 推送合并后的代码
+
+            # git push origin \"$TARGET_BRANCH\"
+
+
+            # # 创建并推送 Tag
+
+            # git tag -a \"$TAG_NAME\" -m \"$TAG_MESSAGE\"
+
+            # git push origin \"$TAG_NAME\"
+
+
+            # echo \"合并完成，Tag $TAG_NAME 已创建并推送。\"
+
+
+
+            # # or run a script from your repository, like:
+
+            # # bash ./path/to/script.sh
+
+            # # not just bash, e.g.:
+
+            # # ruby ./path/to/script.rb"
+    - cache-push@2: {}
+    envs:
+    - ANDROID_KEYSTORE_URL: "$HOME/keystores/upload.jks"
+    - opts:
+        is_expand: false
+      PL_VARIANT_GOOGLE_QA_RELEASE: GoogleQaRelease
+    - opts:
+        is_expand: false
+      PL_VARIANT_GOOGLE_QA_DEBUG: GoogleQaDebug
+    - opts:
+        is_expand: false
+      LAMDA_TEST_USER_NAME: jasoncoins
+    - opts:
+        is_expand: false
+      LAMDA_TEST_ACCESS_KEY: YbQJ2NhN3fOhzTvoUURhD5nTnFY9UAOUUnA0fGyhuaLp95gYC8
+  pl-google-dev:
+    steps:
+    - set-java-version@1:
+        inputs:
+        - set_java_version: '17'
+    - activate-ssh-key@4:
+        run_if: '{{getenv "SSH_RSA_PRIVATE_KEY" | ne ""}}'
+    - git-clone@8.1: {}
+    - cache-pull@2: {}
+    - script@1:
+        title: Do anything with Script step
+    - file-downloader@1:
+        inputs:
+        - destination: "$ANDROID_KEYSTORE_URL"
+        - source: "$BITRISEIO_ANDROID_KEYSTORE_URL"
+    - script@1:
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            # fail if any commands fails
+            set -e
+            # make pipelines' return status equal the last command to exit with a non-zero status, or zero if all commands exit successfully
+            set -o pipefail
+            # debug log
+            set -x
+
+            # write your script here
+            #!/bin/bash
+
+            fileName="Coins/coins/build.gradle"
+
+            GLOBAL_APP_VERSION=$(grep -m 1 -w "GLOBAL_APP_VERSION =" $fileName | tr -cd "[0-9]")
+            echo "GLOBAL_APP_VERSION=${GLOBAL_APP_VERSION}"
+
+            MAJOR_FEATURE_VERSION=$(grep -m 1 -w "var MAJOR_FEATURE_VERSION =" $fileName | tr -cd "[0-9]")
+            echo "MAJOR_FEATURE_VERSION=${MAJOR_FEATURE_VERSION}"
+
+            MINOR_FEATURE_VERSION=$(grep -m 1 -w "var MINOR_FEATURE_VERSION =" $fileName | tr -cd "[0-9]")
+            echo "MINOR_FEATURE_VERSION=${MINOR_FEATURE_VERSION}"
+
+            BUGFIX_VERSION=$(grep -m 1 -w "var BUGFIX_VERSION =" $fileName | tr -cd "[0-9]")
+            echo "BUGFIX_VERSION=${BUGFIX_VERSION}"
+
+            version=$BITRISE_GIT_MESSAGE
+            echo "inputVersion=${version}"
+
+            if [[ $version =~ ^(v|version-)+[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              echo "✅ It must start with 'v' or 'version-' and be followed by a four-digit version number."
+              index=$(echo "$version" | grep -bo '[0-9]' | head -n 1 | cut -d: -f1)
+
+              if [ -n "$index" ]; then
+                result="${version:$index}"
+                echo "result: $result"
+                IFS='.' read -r -a arr <<<"$result"
+
+                len=${#arr[@]}
+
+                if [ ${#arr[@]} -eq 4 ]; then
+                  for ((i = 0; i < len; i++)); do
+                    if [ "$i" -eq 0 ]; then
+                      old="GLOBAL_APP_VERSION = ${GLOBAL_APP_VERSION}"
+                      new="GLOBAL_APP_VERSION = ${arr[$i]}"
+                      sed -i  "s/$old/$new/g" $fileName
+                    elif [ "$i" -eq 1 ]; then
+                      old="MAJOR_FEATURE_VERSION = ${MAJOR_FEATURE_VERSION}"
+                      new="MAJOR_FEATURE_VERSION = ${arr[$i]}"
+                      sed -i  "s/$old/$new/g" $fileName
+                    elif [ "$i" -eq 2 ]; then
+                      old="MINOR_FEATURE_VERSION = ${MINOR_FEATURE_VERSION}"
+                      new="MINOR_FEATURE_VERSION = ${arr[$i]}"
+                      sed -i "s/$old/$new/g" $fileName
+                    elif [ "$i" -eq 3 ]; then
+                      old="BUGFIX_VERSION = ${BUGFIX_VERSION}"
+                      new="BUGFIX_VERSION = ${arr[$i]}"
+                      sed -i "s/$old/$new/g" $fileName
+                    else
+                      old="BUGFIX_VERSION = ${BUGFIX_VERSION}"
+                      new="BUGFIX_VERSION = ${arr[$i]}"
+                      sed -i "s/$old/$new/g" $fileName
+                    fi
+                  done
+                else
+                  echo "The version format is not 4 digits"
+                fi
+              else
+                echo "not found '.'"
+              fi
+            else
+              echo "❌ Does not conform to the format, must start with 'v' or 'version-', suffixed with a four-digit version number"
+            fi
+
+            # or run a script from your repository, like:
+            # bash ./path/to/script.sh
+            # not just bash, e.g.:
+            # ruby ./path/to/script.rb
+        title: Modify the version
+    - script@1:
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            # fail if any commands fails
+            set -e
+            # make pipelines' return status equal the last command to exit with a non-zero status, or zero if all commands exit successfully
+            set -o pipefail
+            # debug log
+            set -x
+
+            # write your script here
+            echo "Hello World!"
+
+            current_dir=$(pwd)
+            echo "current_dir=${current_dir}"
+
+            folders=$(ls -l | grep '^d' | awk '{print $9}')
+
+            echo "$folders"
+
+            # or run a script from your repository, like:
+            # bash ./path/to/script.sh
+            # not just bash, e.g.:
+            # ruby ./path/to/script.rb
+
+            GLOBAL_APP_VERSION=$(grep -m 1 -w "var GLOBAL_APP_VERSION ="  Coins/coins/build.gradle | tr -cd "[0-9]")
+            echo "GLOBAL_APP_VERSION=${GLOBAL_APP_VERSION}"
+
+            MAJOR_FEATURE_VERSION=$(grep -m 1 -w "var MAJOR_FEATURE_VERSION =" Coins/coins/build.gradle | tr -cd "[0-9]")
+            echo "MAJOR_FEATURE_VERSION=${MAJOR_FEATURE_VERSION}"
+
+            MINOR_FEATURE_VERSION=$(grep -m 1 -w "var MINOR_FEATURE_VERSION =" Coins/coins/build.gradle | tr -cd "[0-9]")
+            echo "MINOR_FEATURE_VERSION=${MINOR_FEATURE_VERSION}"
+
+            BUGFIX_VERSION=$(grep -m 1 -w "var BUGFIX_VERSION =" Coins/coins/build.gradle | tr -cd "[0-9]")
+            echo "BUGFIX_VERSION=${BUGFIX_VERSION}"
+
+            appVersion="${GLOBAL_APP_VERSION}.${MAJOR_FEATURE_VERSION}.${MINOR_FEATURE_VERSION}.${BUGFIX_VERSION}"
+
+            envman add --key Coins_Android_App_Version --value "$appVersion"
+
+            echo "appVersion=${appVersion}"
+        title: Read the version
+    - slack@4:
+        inputs:
+        - channel: C072299UL5U
+        - pretext: "*Build Start!! :rocket::rocket::rocket:"
+        - webhook_url_on_error: "$SLACK_WEB_HOOK_URL_ANDROID"
+        - channel_on_error: C072299UL5U
+        - text_on_error: "*Build FAILED!! :catcrying::catcrying::catcrying:"
+        - buttons: |
+            View App|${BITRISE_APP_URL}
+            View Pipeline Build|${BITRISEIO_PIPELINE_BUILD_URL}
+            View Workflow Build|${BITRISE_BUILD_URL}
+        - fields: |
+            Version|${Coins_Android_App_Version}
+            App|${BITRISE_APP_TITLE}
+            Branch|${BITRISE_GIT_BRANCH}
+            Pipeline|${BITRISEIO_PIPELINE_TITLE}
+            Workflow|${BITRISE_TRIGGERED_WORKFLOW_ID}
+        - webhook_url: "$SLACK_WEB_HOOK_URL_ANDROID"
+    - install-missing-android-tools@3:
+        inputs:
+        - gradlew_path: "$PROJECT_LOCATION/gradlew"
+    - android-build@1:
+        inputs:
+        - module: "$MODULE"
+        - variant: "$PL_VARIANT_GOOGLE_QA_RELEASE"
+        - project_location: "$PROJECT_LOCATION"
+    - android-build@1:
+        inputs:
+        - module: "$MODULE"
+        - variant: "$PL_VARIANT_GOOGLE_QA_DEBUG"
+        - project_location: "$PROJECT_LOCATION"
+    - deploy-to-bitrise-io@2: {}
+    - cache-push@2: {}
+    - slack@4:
+        inputs:
+        - channel: C072299UL5U
+        - pretext:
+        - webhook_url_on_error: "$SLACK_WEB_HOOK_URL_ANDROID"
+        - text_on_error: 'Build Failed!! :catcrying::catcrying::catcrying:'
+        - pretext_on_error: "*Build Failed!* :catcrying::catcrying::catcrying:"
+        - buttons: |
+            View App|${BITRISE_APP_URL}
+            View Pipeline Build|${BITRISEIO_PIPELINE_BUILD_URL}
+            View Workflow Build|${BITRISE_BUILD_URL}
+        - fields: |
+            Version|${Coins_Android_App_Version}
+            App|${BITRISE_APP_TITLE}
+            Branch|${BITRISE_GIT_BRANCH}
+            Pipeline|${BITRISEIO_PIPELINE_TITLE}
+            Workflow|${BITRISE_TRIGGERED_WORKFLOW_ID}
+        - text: "@amber *Build Succeeded!!:tada::tada::tada:"
+        - webhook_url: "$SLACK_WEB_HOOK_URL_ANDROID"
+    envs:
+    - ANDROID_KEYSTORE_URL: "$HOME/keystores/upload.jks"
+    - opts:
+        is_expand: false
+      PL_VARIANT_GOOGLE_QA_RELEASE: GoogleQaRelease
+    - opts:
+        is_expand: false
+      PL_VARIANT_GOOGLE_QA_DEBUG: GoogleQaDebug
+    pl-google-qa:
+  pl-google-prod:
+    steps:
+    - set-java-version@1:
+        inputs:
+        - set_java_version: '17'
+    - activate-ssh-key@4:
+        run_if: '{{getenv "SSH_RSA_PRIVATE_KEY" | ne ""}}'
+    - git-clone@6: {}
+    - cache-pull@2: {}
+    - script@1:
+        title: Do anything with Script step
+    - file-downloader@1:
+        inputs:
+        - destination: "$ANDROID_KEYSTORE_URL"
+        - source: "$BITRISEIO_ANDROID_KEYSTORE_URL"
+    - script@1:
+        title: Modify the version
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            # fail if any commands fails
+            set -e
+            # make pipelines' return status equal the last command to exit with a non-zero status, or zero if all commands exit successfully
+            set -o pipefail
+            # debug log
+            set -x
+
+            # write your script here
+            #!/bin/bash
+
+            fileName="Coins/coins/build.gradle"
+
+            GLOBAL_APP_VERSION=$(grep -m 1 -w "GLOBAL_APP_VERSION =" $fileName | tr -cd "[0-9]")
+            echo "GLOBAL_APP_VERSION=${GLOBAL_APP_VERSION}"
+
+            MAJOR_FEATURE_VERSION=$(grep -m 1 -w "var MAJOR_FEATURE_VERSION =" $fileName | tr -cd "[0-9]")
+            echo "MAJOR_FEATURE_VERSION=${MAJOR_FEATURE_VERSION}"
+
+            MINOR_FEATURE_VERSION=$(grep -m 1 -w "var MINOR_FEATURE_VERSION =" $fileName | tr -cd "[0-9]")
+            echo "MINOR_FEATURE_VERSION=${MINOR_FEATURE_VERSION}"
+
+            BUGFIX_VERSION=$(grep -m 1 -w "var BUGFIX_VERSION =" $fileName | tr -cd "[0-9]")
+            echo "BUGFIX_VERSION=${BUGFIX_VERSION}"
+
+            version=$BITRISE_GIT_MESSAGE
+            echo "inputVersion=${version}"
+
+            if [[ $version =~ ^(v|version-)+[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              echo "✅ It must start with 'v' or 'version-' and be followed by a four-digit version number."
+              index=$(echo "$version" | grep -bo '[0-9]' | head -n 1 | cut -d: -f1)
+
+              if [ -n "$index" ]; then
+                result="${version:$index}"
+                echo "result: $result"
+                IFS='.' read -r -a arr <<<"$result"
+
+                len=${#arr[@]}
+
+                if [ ${#arr[@]} -eq 4 ]; then
+                  for ((i = 0; i < len; i++)); do
+                    if [ "$i" -eq 0 ]; then
+                      old="GLOBAL_APP_VERSION = ${GLOBAL_APP_VERSION}"
+                      new="GLOBAL_APP_VERSION = ${arr[$i]}"
+                      sed -i  "s/$old/$new/g" $fileName
+                    elif [ "$i" -eq 1 ]; then
+                      old="MAJOR_FEATURE_VERSION = ${MAJOR_FEATURE_VERSION}"
+                      new="MAJOR_FEATURE_VERSION = ${arr[$i]}"
+                      sed -i  "s/$old/$new/g" $fileName
+                    elif [ "$i" -eq 2 ]; then
+                      old="MINOR_FEATURE_VERSION = ${MINOR_FEATURE_VERSION}"
+                      new="MINOR_FEATURE_VERSION = ${arr[$i]}"
+                      sed -i "s/$old/$new/g" $fileName
+                    elif [ "$i" -eq 3 ]; then
+                      old="BUGFIX_VERSION = ${BUGFIX_VERSION}"
+                      new="BUGFIX_VERSION = ${arr[$i]}"
+                      sed -i "s/$old/$new/g" $fileName
+                    else
+                      old="BUGFIX_VERSION = ${BUGFIX_VERSION}"
+                      new="BUGFIX_VERSION = ${arr[$i]}"
+                      sed -i "s/$old/$new/g" $fileName
+                    fi
+                  done
+                else
+                  echo "The version format is not 4 digits"
+                fi
+              else
+                echo "not found '.'"
+              fi
+            else
+              echo "❌ Does not conform to the format, must start with 'v' or 'version-', suffixed with a four-digit version number"
+            fi
+
+            # or run a script from your repository, like:
+            # bash ./path/to/script.sh
+            # not just bash, e.g.:
+            # ruby ./path/to/script.rb
+    - script@1:
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            # fail if any commands fails
+            set -e
+            # make pipelines' return status equal the last command to exit with a non-zero status, or zero if all commands exit successfully
+            set -o pipefail
+            # debug log
+            set -x
+
+            # write your script here
+            echo "Hello World!"
+
+            current_dir=$(pwd)
+            echo "current_dir=${current_dir}"
+
+            folders=$(ls -l | grep '^d' | awk '{print $9}')
+
+            echo "$folders"
+
+            # or run a script from your repository, like:
+            # bash ./path/to/script.sh
+            # not just bash, e.g.:
+            # ruby ./path/to/script.rb
+
+            GLOBAL_APP_VERSION=$(grep -m 1 -w "var GLOBAL_APP_VERSION ="  Coins/coins/build.gradle | tr -cd "[0-9]")
+            echo "GLOBAL_APP_VERSION=${GLOBAL_APP_VERSION}"
+
+            MAJOR_FEATURE_VERSION=$(grep -m 1 -w "var MAJOR_FEATURE_VERSION =" Coins/coins/build.gradle | tr -cd "[0-9]")
+            echo "MAJOR_FEATURE_VERSION=${MAJOR_FEATURE_VERSION}"
+
+            MINOR_FEATURE_VERSION=$(grep -m 1 -w "var MINOR_FEATURE_VERSION =" Coins/coins/build.gradle | tr -cd "[0-9]")
+            echo "MINOR_FEATURE_VERSION=${MINOR_FEATURE_VERSION}"
+
+            BUGFIX_VERSION=$(grep -m 1 -w "var BUGFIX_VERSION =" Coins/coins/build.gradle | tr -cd "[0-9]")
+            echo "BUGFIX_VERSION=${BUGFIX_VERSION}"
+
+            appVersion="${GLOBAL_APP_VERSION}.${MAJOR_FEATURE_VERSION}.${MINOR_FEATURE_VERSION}.${BUGFIX_VERSION}"
+
+            envman add --key Coins_Android_App_Version --value "$appVersion"
+
+            echo "appVersion=${appVersion}"
+        title: Read the version
+    - slack@4:
+        is_always_run: false
+        inputs:
+        - channel: C072299UL5U
+        - pretext: "*Build Start!!:rocket::rocket::rocket:"
+        - webhook_url_on_error: "$SLACK_WEB_HOOK_URL_ANDROID"
+        - channel_on_error: C072299UL5U
+        - text_on_error: Build Failed!!
+        - fields: |
+            Version|${Coins_Android_App_Version}
+            App|${BITRISE_APP_TITLE}
+            Branch|${BITRISE_GIT_BRANCH}
+            Pipeline|${BITRISEIO_PIPELINE_TITLE}
+            Workflow|${BITRISE_TRIGGERED_WORKFLOW_ID}
+        - webhook_url: "$SLACK_WEB_HOOK_URL_ANDROID"
+    - install-missing-android-tools@3:
+        inputs:
+        - gradlew_path: "$PROJECT_LOCATION/gradlew"
+    - android-lint@0:
+        inputs:
+        - module: "$MODULE"
+        - variant: "$PL_VARIANT_GOOGLE_PROD_RELEASE"
+        - project_location: "$PROJECT_LOCATION"
+    - android-build@1:
+        inputs:
+        - module: "$MODULE"
+        - variant: "$PL_VARIANT_GOOGLE_PROD_RELEASE"
+        - project_location: "$PROJECT_LOCATION"
+    - android-build@1:
+        inputs:
+        - module: "$MODULE"
+        - variant: "$PL_VARIANT_GOOGLE_PROD_DEBUG"
+        - project_location: "$PROJECT_LOCATION"
+    - deploy-to-bitrise-io@2: {}
+    - cache-push@2: {}
+    - slack@4:
+        inputs:
+        - channel: C072299UL5U
+        - pretext:
+        - webhook_url_on_error: "$SLACK_WEB_HOOK_URL_ANDROID"
+        - channel_on_error: "#bitrise-android-robot"
+        - fields: |
+            Version|${Coins_Android_App_Version}
+            App|${BITRISE_APP_TITLE}
+            Branch|${BITRISE_GIT_BRANCH}
+            Pipeline|${BITRISEIO_PIPELINE_TITLE}
+            Workflow|${BITRISE_TRIGGERED_WORKFLOW_ID}
+        - text: "@amber *Build Succeeded!!:tada::tada::tada:"
+        - text_on_error: "*Build Failed!*"
+        - webhook_url: "$SLACK_WEB_HOOK_URL_ANDROID"
+    - script@1:
+        inputs:
+        - script_file_path:
+        - content: |-
+            #!/usr/bin/env bash
+            # fail if any commands fails
+            set -e
+            # make pipelines' return status equal the last command to exit with a non-zero status, or zero if all commands exit successfully
+            set -o pipefail
+            # debug log
+            set -x
+
+            # write your script here
+
+            apkPath=$BITRISE_APK_PATH
+            deployPath=$BITRISE_DEPLOY_DIR
+            echo "apkPath=$apkPath"
+            echo "deployPath=$deployPath"
+
+            releaseApkPath=$(find "$deployPath" -type f -name "*-release.apk")
+
+            if [ -z "$releaseApkPath" ]; then
+              echo "No files found in $directory with format *-release.apk."
+            else
+              envman add --key releaseApkPath --value "$releaseApkPath"
+              lambdaTestReleaseApkName=$(basename "$releaseApkPath")
+              envman add --key lambdaTestReleaseApkName --value "${lambdaTestReleaseApkName%.*}"
+              echo "Found files:$releaseApkPath"
+            fi
+
+            lambdaTestApkName=$(basename "$apkPath")
+            envman add --key lambdaTestApkName --value "${lambdaTestApkName%.*}"
+
+            # or run a script from your repository, like:
+            # bash ./path/to/script.sh
+            # not just bash, e.g.:
+            # ruby ./path/to/script.rb
+    - lambdatest-upload@4:
+        inputs:
+        - custom_id:
+        - lambdatest_username: "$LAMDA_TEST_USER_NAME"
+        - lambdatest_access_key: "$LAMDA_TEST_ACCESS_KEY"
+        - app_name: "${lambdaTestApkName}(${Coins_Android_App_Version}).apk"
+        - app_visibility: team
+        - upload_path: "$BITRISE_APK_PATH"
+    - lambdatest-upload@4:
+        inputs:
+        - custom_id:
+        - lambdatest_username: "$LAMDA_TEST_USER_NAME"
+        - lambdatest_access_key: "$LAMDA_TEST_ACCESS_KEY"
+        - app_name: "${lambdaTestReleaseApkName}(${Coins_Android_App_Version}).apk"
+        - app_visibility: team
+        - upload_path: "$releaseApkPath"
+    envs:
+    - ANDROID_KEYSTORE_URL: "$HOME/keystores/upload.jks"
+    - opts:
+        is_expand: false
+      PL_VARIANT_GOOGLE_PROD_RELEASE: GoogleProdRelease
+    - opts:
+        is_expand: false
+      PL_VARIANT_GOOGLE_PROD_DEBUG: GoogleProdDebug
+  pl-google-qa:
+    steps:
+    - set-java-version@1:
+        inputs:
+        - set_java_version: '17'
+    - activate-ssh-key@4:
+        run_if: '{{getenv "SSH_RSA_PRIVATE_KEY" | ne ""}}'
+    - git-clone@8.1: {}
+    - cache-pull@2: {}
+    - script@1:
+        title: Do anything with Script step
+    - file-downloader@1:
+        inputs:
+        - destination: "$ANDROID_KEYSTORE_URL"
+        - source: "$BITRISEIO_ANDROID_KEYSTORE_URL"
+    - script@1:
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            # fail if any commands fails
+            set -e
+            # make pipelines' return status equal the last command to exit with a non-zero status, or zero if all commands exit successfully
+            set -o pipefail
+            # debug log
+            set -x
+
+            # write your script here
+            #!/bin/bash
+
+            fileName="Coins/coins/build.gradle"
+
+            GLOBAL_APP_VERSION=$(grep -m 1 -w "GLOBAL_APP_VERSION =" $fileName | tr -cd "[0-9]")
+            echo "GLOBAL_APP_VERSION=${GLOBAL_APP_VERSION}"
+
+            MAJOR_FEATURE_VERSION=$(grep -m 1 -w "var MAJOR_FEATURE_VERSION =" $fileName | tr -cd "[0-9]")
+            echo "MAJOR_FEATURE_VERSION=${MAJOR_FEATURE_VERSION}"
+
+            MINOR_FEATURE_VERSION=$(grep -m 1 -w "var MINOR_FEATURE_VERSION =" $fileName | tr -cd "[0-9]")
+            echo "MINOR_FEATURE_VERSION=${MINOR_FEATURE_VERSION}"
+
+            BUGFIX_VERSION=$(grep -m 1 -w "var BUGFIX_VERSION =" $fileName | tr -cd "[0-9]")
+            echo "BUGFIX_VERSION=${BUGFIX_VERSION}"
+
+            version=$BITRISE_GIT_MESSAGE
+            echo "inputVersion=${version}"
+
+            if [[ $version =~ ^(v|version-)+[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              echo "✅ It must start with 'v' or 'version-' and be followed by a four-digit version number."
+              index=$(echo "$version" | grep -bo '[0-9]' | head -n 1 | cut -d: -f1)
+
+              if [ -n "$index" ]; then
+                result="${version:$index}"
+                echo "result: $result"
+                IFS='.' read -r -a arr <<<"$result"
+
+                len=${#arr[@]}
+
+                if [ ${#arr[@]} -eq 4 ]; then
+                  for ((i = 0; i < len; i++)); do
+                    if [ "$i" -eq 0 ]; then
+                      old="GLOBAL_APP_VERSION = ${GLOBAL_APP_VERSION}"
+                      new="GLOBAL_APP_VERSION = ${arr[$i]}"
+                      sed -i  "s/$old/$new/g" $fileName
+                    elif [ "$i" -eq 1 ]; then
+                      old="MAJOR_FEATURE_VERSION = ${MAJOR_FEATURE_VERSION}"
+                      new="MAJOR_FEATURE_VERSION = ${arr[$i]}"
+                      sed -i  "s/$old/$new/g" $fileName
+                    elif [ "$i" -eq 2 ]; then
+                      old="MINOR_FEATURE_VERSION = ${MINOR_FEATURE_VERSION}"
+                      new="MINOR_FEATURE_VERSION = ${arr[$i]}"
+                      sed -i "s/$old/$new/g" $fileName
+                    elif [ "$i" -eq 3 ]; then
+                      old="BUGFIX_VERSION = ${BUGFIX_VERSION}"
+                      new="BUGFIX_VERSION = ${arr[$i]}"
+                      sed -i "s/$old/$new/g" $fileName
+                    else
+                      old="BUGFIX_VERSION = ${BUGFIX_VERSION}"
+                      new="BUGFIX_VERSION = ${arr[$i]}"
+                      sed -i "s/$old/$new/g" $fileName
+                    fi
+                  done
+                else
+                  echo "The version format is not 4 digits"
+                fi
+              else
+                echo "not found '.'"
+              fi
+            else
+              echo "❌ Does not conform to the format, must start with 'v' or 'version-', suffixed with a four-digit version number"
+            fi
+
+            # or run a script from your repository, like:
+            # bash ./path/to/script.sh
+            # not just bash, e.g.:
+            # ruby ./path/to/script.rb
+        title: Modify the version
+    - script@1:
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            # fail if any commands fails
+            set -e
+            # make pipelines' return status equal the last command to exit with a non-zero status, or zero if all commands exit successfully
+            set -o pipefail
+            # debug log
+            set -x
+
+            # write your script here
+            echo "Hello World!"
+
+            current_dir=$(pwd)
+            echo "current_dir=${current_dir}"
+
+            folders=$(ls -l | grep '^d' | awk '{print $9}')
+
+            echo "$folders"
+
+            # or run a script from your repository, like:
+            # bash ./path/to/script.sh
+            # not just bash, e.g.:
+            # ruby ./path/to/script.rb
+
+            GLOBAL_APP_VERSION=$(grep -m 1 -w "var GLOBAL_APP_VERSION ="  Coins/coins/build.gradle | tr -cd "[0-9]")
+            echo "GLOBAL_APP_VERSION=${GLOBAL_APP_VERSION}"
+
+            MAJOR_FEATURE_VERSION=$(grep -m 1 -w "var MAJOR_FEATURE_VERSION =" Coins/coins/build.gradle | tr -cd "[0-9]")
+            echo "MAJOR_FEATURE_VERSION=${MAJOR_FEATURE_VERSION}"
+
+            MINOR_FEATURE_VERSION=$(grep -m 1 -w "var MINOR_FEATURE_VERSION =" Coins/coins/build.gradle | tr -cd "[0-9]")
+            echo "MINOR_FEATURE_VERSION=${MINOR_FEATURE_VERSION}"
+
+            BUGFIX_VERSION=$(grep -m 1 -w "var BUGFIX_VERSION =" Coins/coins/build.gradle | tr -cd "[0-9]")
+            echo "BUGFIX_VERSION=${BUGFIX_VERSION}"
+
+            appVersion="${GLOBAL_APP_VERSION}.${MAJOR_FEATURE_VERSION}.${MINOR_FEATURE_VERSION}.${BUGFIX_VERSION}"
+
+            envman add --key Coins_Android_App_Version --value "$appVersion"
+
+            echo "appVersion=${appVersion}"
+        title: Read the version
+    - slack@4:
+        inputs:
+        - channel: C072299UL5U
+        - pretext: "*Build Start!! :rocket::rocket::rocket:"
+        - webhook_url_on_error: "$SLACK_WEB_HOOK_URL_ANDROID"
+        - channel_on_error: C072299UL5U
+        - text_on_error: "*Build FAILED!! :catcrying::catcrying::catcrying:"
+        - buttons: |
+            View App|${BITRISE_APP_URL}
+            View Pipeline Build|${BITRISEIO_PIPELINE_BUILD_URL}
+            View Workflow Build|${BITRISE_BUILD_URL}
+        - fields: |
+            Version|${Coins_Android_App_Version}
+            App|${BITRISE_APP_TITLE}
+            Branch|${BITRISE_GIT_BRANCH}
+            Pipeline|${BITRISEIO_PIPELINE_TITLE}
+            Workflow|${BITRISE_TRIGGERED_WORKFLOW_ID}
+        - webhook_url: "$SLACK_WEB_HOOK_URL_ANDROID"
+    - install-missing-android-tools@3:
+        inputs:
+        - gradlew_path: "$PROJECT_LOCATION/gradlew"
+    - android-build@1:
+        inputs:
+        - module: "$MODULE"
+        - variant: "$PL_VARIANT_GOOGLE_QA_RELEASE"
+        - project_location: "$PROJECT_LOCATION"
+    - android-build@1:
+        inputs:
+        - module: "$MODULE"
+        - variant: "$PL_VARIANT_GOOGLE_QA_DEBUG"
+        - project_location: "$PROJECT_LOCATION"
+    - deploy-to-bitrise-io@2: {}
+    - cache-push@2: {}
+    - slack@4:
+        inputs:
+        - channel: C072299UL5U
+        - pretext:
+        - webhook_url_on_error: "$SLACK_WEB_HOOK_URL_ANDROID"
+        - text_on_error: 'Build Failed!! :catcrying::catcrying::catcrying:'
+        - pretext_on_error: "*Build Failed!* :catcrying::catcrying::catcrying:"
+        - buttons: |
+            View App|${BITRISE_APP_URL}
+            View Pipeline Build|${BITRISEIO_PIPELINE_BUILD_URL}
+            View Workflow Build|${BITRISE_BUILD_URL}
+        - fields: |
+            Version|${Coins_Android_App_Version}
+            App|${BITRISE_APP_TITLE}
+            Branch|${BITRISE_GIT_BRANCH}
+            Pipeline|${BITRISEIO_PIPELINE_TITLE}
+            Workflow|${BITRISE_TRIGGERED_WORKFLOW_ID}
+        - text: "@amber *Build Succeeded!!:tada::tada::tada:"
+        - webhook_url: "$SLACK_WEB_HOOK_URL_ANDROID"
+    - script@1:
+        inputs:
+        - script_file_path:
+        - content: |-
+            #!/usr/bin/env bash
+            # fail if any commands fails
+            set -e
+            # make pipelines' return status equal the last command to exit with a non-zero status, or zero if all commands exit successfully
+            set -o pipefail
+            # debug log
+            set -x
+
+            # write your script here
+
+            apkPath=$BITRISE_APK_PATH
+            deployPath=$BITRISE_DEPLOY_DIR
+            echo "apkPath=$apkPath"
+            echo "deployPath=$deployPath"
+
+            releaseApkPath=$(find "$deployPath" -type f -name "*-release.apk")
+
+            if [ -z "$releaseApkPath" ]; then
+              echo "No files found in $directory with format *-release.apk."
+            else
+              envman add --key releaseApkPath --value "$releaseApkPath"
+              lambdaTestReleaseApkName=$(basename "$releaseApkPath")
+              envman add --key lambdaTestReleaseApkName --value "${lambdaTestReleaseApkName%.*}"
+              echo "Found files:$releaseApkPath"
+            fi
+
+            lambdaTestApkName=$(basename "$apkPath")
+            envman add --key lambdaTestApkName --value "${lambdaTestApkName%.*}"
+
+            # or run a script from your repository, like:
+            # bash ./path/to/script.sh
+            # not just bash, e.g.:
+            # ruby ./path/to/script.rb
+    - lambdatest-upload@4:
+        inputs:
+        - custom_id:
+        - lambdatest_username: "$LAMDA_TEST_USER_NAME"
+        - lambdatest_access_key: "$LAMDA_TEST_ACCESS_KEY"
+        - app_name: "${lambdaTestApkName}(${Coins_Android_App_Version}).apk"
+        - app_visibility: team
+        - upload_path: "$BITRISE_APK_PATH"
+    - lambdatest-upload@4:
+        inputs:
+        - custom_id:
+        - lambdatest_username: "$LAMDA_TEST_USER_NAME"
+        - lambdatest_access_key: "$LAMDA_TEST_ACCESS_KEY"
+        - app_name: "${lambdaTestReleaseApkName}(${Coins_Android_App_Version}).apk"
+        - app_visibility: team
+        - upload_path: "$releaseApkPath"
+    envs:
+    - ANDROID_KEYSTORE_URL: "$HOME/keystores/upload.jks"
+    - opts:
+        is_expand: false
+      PL_VARIANT_GOOGLE_QA_RELEASE: GoogleQaRelease
+    - opts:
+        is_expand: false
+      PL_VARIANT_GOOGLE_QA_DEBUG: GoogleQaDebug
+  pl-google-stage:
+    steps:
+    - set-java-version@1:
+        inputs:
+        - set_java_version: '17'
+    - activate-ssh-key@4:
+        run_if: '{{getenv "SSH_RSA_PRIVATE_KEY" | ne ""}}'
+    - git-clone@6: {}
+    - cache-pull@2: {}
+    - script@1:
+        title: Do anything with Script step
+        inputs:
+        - script_file_path:
+        - content: |
+            #!/usr/bin/env bash
+            # fail if any commands fails
+            set -e
+            # make pipelines' return status equal the last command to exit with a non-zero status, or zero if all commands exit successfully
+            set -o pipefail
+            # debug log
+            set -x
+
+            # write your script here
+            echo "Hello World!"
+
+            current_dir=$(pwd)
+            echo "current_dir=${current_dir}"
+
+            # 列出当前目录下的文件和文件夹，并通过grep过滤出文件夹
+            folders=$(ls -l | grep '^d' | awk '{print $9}')
+
+            # 打印文件夹列表
+            echo "当前目录下的文件夹有:"
+            echo "$folders"
+
+            # or run a script from your repository, like:
+            # bash ./path/to/script.sh
+            # not just bash, e.g.:
+            # ruby ./path/to/script.rb
+
+            GLOBAL_APP_VERSION=$(grep -m 1 -w "var GLOBAL_APP_VERSION ="  Coins/coins/build.gradle | tr -cd "[0-9]")
+            echo "GLOBAL_APP_VERSION=${GLOBAL_APP_VERSION}"
+
+            MAJOR_FEATURE_VERSION=$(grep -m 1 -w "var MAJOR_FEATURE_VERSION =" Coins/coins/build.gradle | tr -cd "[0-9]")
+            echo "MAJOR_FEATURE_VERSION=${MAJOR_FEATURE_VERSION}"
+
+            MINOR_FEATURE_VERSION=$(grep -m 1 -w "var GLOBAL_APP_VERSION =" Coins/coins/build.gradle | tr -cd "[0-9]")
+            echo "MINOR_FEATURE_VERSION=${MINOR_FEATURE_VERSION}"
+
+            BUGFIX_VERSION=$(grep -m 1 -w "var MAJOR_FEATURE_VERSION =" Coins/coins/build.gradle | tr -cd "[0-9]")
+            echo "BUGFIX_VERSION=${BUGFIX_VERSION}"
+
+            appVersion="${GLOBAL_APP_VERSION}.${MAJOR_FEATURE_VERSION}.${MINOR_FEATURE_VERSION}.${BUGFIX_VERSION}"
+
+            envman add --key Coins_Android_App_Version --value "$appVersion"
+
+            echo "appVersion=${appVersion}"
+    - file-downloader@1:
+        inputs:
+        - destination: "$ANDROID_KEYSTORE_URL"
+        - source: "$BITRISEIO_ANDROID_KEYSTORE_URL"
+    - script@1:
+        title: Modify the version
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            # fail if any commands fails
+            set -e
+            # make pipelines' return status equal the last command to exit with a non-zero status, or zero if all commands exit successfully
+            set -o pipefail
+            # debug log
+            set -x
+
+            # write your script here
+            #!/bin/bash
+
+            fileName="Coins/coins/build.gradle"
+
+            GLOBAL_APP_VERSION=$(grep -m 1 -w "GLOBAL_APP_VERSION =" $fileName | tr -cd "[0-9]")
+            echo "GLOBAL_APP_VERSION=${GLOBAL_APP_VERSION}"
+
+            MAJOR_FEATURE_VERSION=$(grep -m 1 -w "var MAJOR_FEATURE_VERSION =" $fileName | tr -cd "[0-9]")
+            echo "MAJOR_FEATURE_VERSION=${MAJOR_FEATURE_VERSION}"
+
+            MINOR_FEATURE_VERSION=$(grep -m 1 -w "var MINOR_FEATURE_VERSION =" $fileName | tr -cd "[0-9]")
+            echo "MINOR_FEATURE_VERSION=${MINOR_FEATURE_VERSION}"
+
+            BUGFIX_VERSION=$(grep -m 1 -w "var BUGFIX_VERSION =" $fileName | tr -cd "[0-9]")
+            echo "BUGFIX_VERSION=${BUGFIX_VERSION}"
+
+            version=$BITRISE_GIT_MESSAGE
+            echo "inputVersion=${version}"
+
+            if [[ $version =~ ^(v|version-)+[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              echo "✅ It must start with 'v' or 'version-' and be followed by a four-digit version number."
+              index=$(echo "$version" | grep -bo '[0-9]' | head -n 1 | cut -d: -f1)
+
+              if [ -n "$index" ]; then
+                result="${version:$index}"
+                echo "result: $result"
+                IFS='.' read -r -a arr <<<"$result"
+
+                len=${#arr[@]}
+
+                if [ ${#arr[@]} -eq 4 ]; then
+                  for ((i = 0; i < len; i++)); do
+                    if [ "$i" -eq 0 ]; then
+                      old="GLOBAL_APP_VERSION = ${GLOBAL_APP_VERSION}"
+                      new="GLOBAL_APP_VERSION = ${arr[$i]}"
+                      sed -i  "s/$old/$new/g" $fileName
+                    elif [ "$i" -eq 1 ]; then
+                      old="MAJOR_FEATURE_VERSION = ${MAJOR_FEATURE_VERSION}"
+                      new="MAJOR_FEATURE_VERSION = ${arr[$i]}"
+                      sed -i  "s/$old/$new/g" $fileName
+                    elif [ "$i" -eq 2 ]; then
+                      old="MINOR_FEATURE_VERSION = ${MINOR_FEATURE_VERSION}"
+                      new="MINOR_FEATURE_VERSION = ${arr[$i]}"
+                      sed -i "s/$old/$new/g" $fileName
+                    elif [ "$i" -eq 3 ]; then
+                      old="BUGFIX_VERSION = ${BUGFIX_VERSION}"
+                      new="BUGFIX_VERSION = ${arr[$i]}"
+                      sed -i "s/$old/$new/g" $fileName
+                    else
+                      old="BUGFIX_VERSION = ${BUGFIX_VERSION}"
+                      new="BUGFIX_VERSION = ${arr[$i]}"
+                      sed -i "s/$old/$new/g" $fileName
+                    fi
+                  done
+                else
+                  echo "The version format is not 4 digits"
+                fi
+              else
+                echo "not found '.'"
+              fi
+            else
+              echo "❌ Does not conform to the format, must start with 'v' or 'version-', suffixed with a four-digit version number"
+            fi
+
+            # or run a script from your repository, like:
+            # bash ./path/to/script.sh
+            # not just bash, e.g.:
+            # ruby ./path/to/script.rb
+    - script@1:
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            # fail if any commands fails
+            set -e
+            # make pipelines' return status equal the last command to exit with a non-zero status, or zero if all commands exit successfully
+            set -o pipefail
+            # debug log
+            set -x
+
+            # write your script here
+            echo "Hello World!"
+
+            current_dir=$(pwd)
+            echo "current_dir=${current_dir}"
+
+            folders=$(ls -l | grep '^d' | awk '{print $9}')
+
+            echo "$folders"
+
+            # or run a script from your repository, like:
+            # bash ./path/to/script.sh
+            # not just bash, e.g.:
+            # ruby ./path/to/script.rb
+
+            GLOBAL_APP_VERSION=$(grep -m 1 -w "var GLOBAL_APP_VERSION ="  Coins/coins/build.gradle | tr -cd "[0-9]")
+            echo "GLOBAL_APP_VERSION=${GLOBAL_APP_VERSION}"
+
+            MAJOR_FEATURE_VERSION=$(grep -m 1 -w "var MAJOR_FEATURE_VERSION =" Coins/coins/build.gradle | tr -cd "[0-9]")
+            echo "MAJOR_FEATURE_VERSION=${MAJOR_FEATURE_VERSION}"
+
+            MINOR_FEATURE_VERSION=$(grep -m 1 -w "var MINOR_FEATURE_VERSION =" Coins/coins/build.gradle | tr -cd "[0-9]")
+            echo "MINOR_FEATURE_VERSION=${MINOR_FEATURE_VERSION}"
+
+            BUGFIX_VERSION=$(grep -m 1 -w "var BUGFIX_VERSION =" Coins/coins/build.gradle | tr -cd "[0-9]")
+            echo "BUGFIX_VERSION=${BUGFIX_VERSION}"
+
+            appVersion="${GLOBAL_APP_VERSION}.${MAJOR_FEATURE_VERSION}.${MINOR_FEATURE_VERSION}.${BUGFIX_VERSION}"
+
+            envman add --key Coins_Android_App_Version --value "$appVersion"
+
+            echo "appVersion=${appVersion}"
+        title: Read the version
+    - slack@4:
+        is_always_run: false
+        inputs:
+        - channel: C072299UL5U
+        - pretext: "*Build Start!!:rocket::rocket::rocket:"
+        - webhook_url_on_error: "$SLACK_WEB_HOOK_URL_ANDROID"
+        - channel_on_error: C072299UL5U
+        - fields: |
+            Version|${Coins_Android_App_Version}
+            App|${BITRISE_APP_TITLE}
+            Branch|${BITRISE_GIT_BRANCH}
+            Pipeline|${BITRISEIO_PIPELINE_TITLE}
+            Workflow|${BITRISE_TRIGGERED_WORKFLOW_ID}
+        - webhook_url: "$SLACK_WEB_HOOK_URL_ANDROID"
+    - install-missing-android-tools@3:
+        inputs:
+        - gradlew_path: "$PROJECT_LOCATION/gradlew"
+    - android-build@1:
+        inputs:
+        - module: "$MODULE"
+        - variant: "$PL_VARIANT_GOOGLE_STAGE_RELEASE"
+        - project_location: "$PROJECT_LOCATION"
+    - android-build@1:
+        inputs:
+        - module: "$MODULE"
+        - variant: "$PL_VARIANT_GOOGLE_STAGE_DEBUG"
+        - project_location: "$PROJECT_LOCATION"
+    - deploy-to-bitrise-io@2: {}
+    - cache-push@2: {}
+    - slack@4:
+        inputs:
+        - channel: C072299UL5U
+        - pretext:
+        - webhook_url_on_error: "$SLACK_WEB_HOOK_URL_ANDROID"
+        - channel_on_error: C072299UL5U
+        - text_on_error: Build failed!!
+        - fields: |
+            Version|${Coins_Android_App_Version}
+            App|${BITRISE_APP_TITLE}
+            Branch|${BITRISE_GIT_BRANCH}
+            Pipeline|${BITRISEIO_PIPELINE_TITLE}
+            Workflow|${BITRISE_TRIGGERED_WORKFLOW_ID}
+        - text: "@amber *Build Succeeded!!:tada::tada::tada:"
+        - webhook_url: "$SLACK_WEB_HOOK_URL_ANDROID"
+    - script@1:
+        inputs:
+        - script_file_path:
+        - content: |-
+            #!/usr/bin/env bash
+            # fail if any commands fails
+            set -e
+            # make pipelines' return status equal the last command to exit with a non-zero status, or zero if all commands exit successfully
+            set -o pipefail
+            # debug log
+            set -x
+
+            # write your script here
+
+            apkPath=$BITRISE_APK_PATH
+            deployPath=$BITRISE_DEPLOY_DIR
+            echo "apkPath=$apkPath"
+            echo "deployPath=$deployPath"
+
+            releaseApkPath=$(find "$deployPath" -type f -name "*-release.apk")
+
+            if [ -z "$releaseApkPath" ]; then
+              echo "No files found in $directory with format *-release.apk."
+            else
+              envman add --key releaseApkPath --value "$releaseApkPath"
+              lambdaTestReleaseApkName=$(basename "$releaseApkPath")
+              envman add --key lambdaTestReleaseApkName --value "${lambdaTestReleaseApkName%.*}"
+              echo "Found files:$releaseApkPath"
+            fi
+
+            lambdaTestApkName=$(basename "$apkPath")
+            envman add --key lambdaTestApkName --value "${lambdaTestApkName%.*}"
+
+            # or run a script from your repository, like:
+            # bash ./path/to/script.sh
+            # not just bash, e.g.:
+            # ruby ./path/to/script.rb
+    - lambdatest-upload@4:
+        inputs:
+        - custom_id:
+        - lambdatest_username: "$LAMDA_TEST_USER_NAME"
+        - lambdatest_access_key: "$LAMDA_TEST_ACCESS_KEY"
+        - app_name: "${lambdaTestApkName}(${Coins_Android_App_Version}).apk"
+        - app_visibility: team
+        - upload_path: "$BITRISE_APK_PATH"
+    - lambdatest-upload@4:
+        inputs:
+        - custom_id:
+        - lambdatest_username: "$LAMDA_TEST_USER_NAME"
+        - lambdatest_access_key: "$LAMDA_TEST_ACCESS_KEY"
+        - app_name: "${lambdaTestReleaseApkName}(${Coins_Android_App_Version}).apk"
+        - app_visibility: team
+        - upload_path: "$releaseApkPath"
+    envs:
+    - ANDROID_KEYSTORE_URL: "$HOME/keystores/upload.jks"
+    - opts:
+        is_expand: false
+      PL_VARIANT_GOOGLE_STAGE_RELEASE: GoogleStageRelease
+    - opts:
+        is_expand: false
+      PL_VARIANT_GOOGLE_STAGE_DEBUG: GoogleStageDebug
+  pl-huawei-dev:
+    steps:
+    - set-java-version@1:
+        inputs:
+        - set_java_version: '17'
+    - activate-ssh-key@4:
+        run_if: '{{getenv "SSH_RSA_PRIVATE_KEY" | ne ""}}'
+    - git-clone@6: {}
+    - cache-pull@2: {}
+    - script@1:
+        title: Do anything with Script step
+    - file-downloader@1:
+        inputs:
+        - destination: "$ANDROID_KEYSTORE_URL"
+        - source: "$BITRISEIO_ANDROID_KEYSTORE_URL"
+    - script@1:
+        title: Modify the version
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            # fail if any commands fails
+            set -e
+            # make pipelines' return status equal the last command to exit with a non-zero status, or zero if all commands exit successfully
+            set -o pipefail
+            # debug log
+            set -x
+
+            # write your script here
+            #!/bin/bash
+
+            fileName="Coins/coins/build.gradle"
+
+            GLOBAL_APP_VERSION=$(grep -m 1 -w "GLOBAL_APP_VERSION =" $fileName | tr -cd "[0-9]")
+            echo "GLOBAL_APP_VERSION=${GLOBAL_APP_VERSION}"
+
+            MAJOR_FEATURE_VERSION=$(grep -m 1 -w "var MAJOR_FEATURE_VERSION =" $fileName | tr -cd "[0-9]")
+            echo "MAJOR_FEATURE_VERSION=${MAJOR_FEATURE_VERSION}"
+
+            MINOR_FEATURE_VERSION=$(grep -m 1 -w "var MINOR_FEATURE_VERSION =" $fileName | tr -cd "[0-9]")
+            echo "MINOR_FEATURE_VERSION=${MINOR_FEATURE_VERSION}"
+
+            BUGFIX_VERSION=$(grep -m 1 -w "var BUGFIX_VERSION =" $fileName | tr -cd "[0-9]")
+            echo "BUGFIX_VERSION=${BUGFIX_VERSION}"
+
+            version=$BITRISE_GIT_MESSAGE
+            echo "inputVersion=${version}"
+
+            if [[ $version =~ ^(v|version-)+[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              echo "✅ It must start with 'v' or 'version-' and be followed by a four-digit version number."
+              index=$(echo "$version" | grep -bo '[0-9]' | head -n 1 | cut -d: -f1)
+
+              if [ -n "$index" ]; then
+                result="${version:$index}"
+                echo "result: $result"
+                IFS='.' read -r -a arr <<<"$result"
+
+                len=${#arr[@]}
+
+                if [ ${#arr[@]} -eq 4 ]; then
+                  for ((i = 0; i < len; i++)); do
+                    if [ "$i" -eq 0 ]; then
+                      old="GLOBAL_APP_VERSION = ${GLOBAL_APP_VERSION}"
+                      new="GLOBAL_APP_VERSION = ${arr[$i]}"
+                      sed -i  "s/$old/$new/g" $fileName
+                    elif [ "$i" -eq 1 ]; then
+                      old="MAJOR_FEATURE_VERSION = ${MAJOR_FEATURE_VERSION}"
+                      new="MAJOR_FEATURE_VERSION = ${arr[$i]}"
+                      sed -i  "s/$old/$new/g" $fileName
+                    elif [ "$i" -eq 2 ]; then
+                      old="MINOR_FEATURE_VERSION = ${MINOR_FEATURE_VERSION}"
+                      new="MINOR_FEATURE_VERSION = ${arr[$i]}"
+                      sed -i "s/$old/$new/g" $fileName
+                    elif [ "$i" -eq 3 ]; then
+                      old="BUGFIX_VERSION = ${BUGFIX_VERSION}"
+                      new="BUGFIX_VERSION = ${arr[$i]}"
+                      sed -i "s/$old/$new/g" $fileName
+                    else
+                      old="BUGFIX_VERSION = ${BUGFIX_VERSION}"
+                      new="BUGFIX_VERSION = ${arr[$i]}"
+                      sed -i "s/$old/$new/g" $fileName
+                    fi
+                  done
+                else
+                  echo "The version format is not 4 digits"
+                fi
+              else
+                echo "not found '.'"
+              fi
+            else
+              echo "❌ Does not conform to the format, must start with 'v' or 'version-', suffixed with a four-digit version number"
+            fi
+
+            # or run a script from your repository, like:
+            # bash ./path/to/script.sh
+            # not just bash, e.g.:
+            # ruby ./path/to/script.rb
+    - script@1:
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            # fail if any commands fails
+            set -e
+            # make pipelines' return status equal the last command to exit with a non-zero status, or zero if all commands exit successfully
+            set -o pipefail
+            # debug log
+            set -x
+
+            # write your script here
+            echo "Hello World!"
+
+            current_dir=$(pwd)
+            echo "current_dir=${current_dir}"
+
+            folders=$(ls -l | grep '^d' | awk '{print $9}')
+
+            echo "$folders"
+
+            # or run a script from your repository, like:
+            # bash ./path/to/script.sh
+            # not just bash, e.g.:
+            # ruby ./path/to/script.rb
+
+            GLOBAL_APP_VERSION=$(grep -m 1 -w "var GLOBAL_APP_VERSION ="  Coins/coins/build.gradle | tr -cd "[0-9]")
+            echo "GLOBAL_APP_VERSION=${GLOBAL_APP_VERSION}"
+
+            MAJOR_FEATURE_VERSION=$(grep -m 1 -w "var MAJOR_FEATURE_VERSION =" Coins/coins/build.gradle | tr -cd "[0-9]")
+            echo "MAJOR_FEATURE_VERSION=${MAJOR_FEATURE_VERSION}"
+
+            MINOR_FEATURE_VERSION=$(grep -m 1 -w "var MINOR_FEATURE_VERSION =" Coins/coins/build.gradle | tr -cd "[0-9]")
+            echo "MINOR_FEATURE_VERSION=${MINOR_FEATURE_VERSION}"
+
+            BUGFIX_VERSION=$(grep -m 1 -w "var BUGFIX_VERSION =" Coins/coins/build.gradle | tr -cd "[0-9]")
+            echo "BUGFIX_VERSION=${BUGFIX_VERSION}"
+
+            appVersion="${GLOBAL_APP_VERSION}.${MAJOR_FEATURE_VERSION}.${MINOR_FEATURE_VERSION}.${BUGFIX_VERSION}"
+
+            envman add --key Coins_Android_App_Version --value "$appVersion"
+
+            echo "appVersion=${appVersion}"
+        title: Read the version
+    - slack@4:
+        is_always_run: false
+        inputs:
+        - channel: C072299UL5U
+        - pretext: "*Build Start!!:rocket::rocket::rocket:"
+        - webhook_url_on_error: "$SLACK_WEB_HOOK_URL_ANDROID"
+        - text_on_error: 'Build failed!!:catcrying::catcrying::catcrying:'
+        - fields: |
+            Version|${Coins_Android_App_Version}
+            App|${BITRISE_APP_TITLE}
+            Branch|${BITRISE_GIT_BRANCH}
+            Pipeline|${BITRISEIO_PIPELINE_TITLE}
+            Workflow|${BITRISE_TRIGGERED_WORKFLOW_ID}
+        - webhook_url: "$SLACK_WEB_HOOK_URL_ANDROID"
+    - install-missing-android-tools@3:
+        inputs:
+        - gradlew_path: "$PROJECT_LOCATION/gradlew"
+    - android-build@1:
+        inputs:
+        - module: "$MODULE"
+        - variant: "$PL_VARIANT_HUAWEI_DEV_RELEASE"
+        - project_location: "$PROJECT_LOCATION"
+    - android-build@1:
+        inputs:
+        - module: "$MODULE"
+        - variant: "$PL_VARIANT_HUAWEI_DEV_DEBUG"
+        - project_location: "$PROJECT_LOCATION"
+    - deploy-to-bitrise-io@2: {}
+    - cache-push@2: {}
+    - slack@4:
+        inputs:
+        - channel: C072299UL5U
+        - pretext:
+        - webhook_url_on_error: "$SLACK_WEB_HOOK_URL_ANDROID"
+        - channel_on_error: C072299UL5U
+        - text_on_error: 'Build Failed!!:catcrying::catcrying::catcrying:'
+        - fields: |
+            Version|${Coins_Android_App_Version}
+            App|${BITRISE_APP_TITLE}
+            Branch|${BITRISE_GIT_BRANCH}
+            Pipeline|${BITRISEIO_PIPELINE_TITLE}
+            Workflow|${BITRISE_TRIGGERED_WORKFLOW_ID}
+        - text: "@amber *Build Succeeded!!:tada::tada::tada:"
+        - webhook_url: "$SLACK_WEB_HOOK_URL_ANDROID"
+    envs:
+    - ANDROID_KEYSTORE_URL: "$HOME/keystores/upload.jks"
+    - opts:
+        is_expand: false
+      PL_VARIANT_HUAWEI_DEV_RELEASE: HuaweiDevRelease
+    - opts:
+        is_expand: false
+      PL_VARIANT_HUAWEI_DEV_DEBUG: HuaweiDevDebug
+  pl-huawei-prod:
+    steps:
+    - set-java-version@1:
+        inputs:
+        - set_java_version: '17'
+    - activate-ssh-key@4:
+        run_if: '{{getenv "SSH_RSA_PRIVATE_KEY" | ne ""}}'
+    - git-clone@6: {}
+    - cache-pull@2: {}
+    - script@1:
+        title: Do anything with Script step
+    - file-downloader@1:
+        inputs:
+        - destination: "$ANDROID_KEYSTORE_URL"
+        - source: "$BITRISEIO_ANDROID_KEYSTORE_URL"
+    - script@1:
+        title: Modify the version
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            # fail if any commands fails
+            set -e
+            # make pipelines' return status equal the last command to exit with a non-zero status, or zero if all commands exit successfully
+            set -o pipefail
+            # debug log
+            set -x
+
+            # write your script here
+            #!/bin/bash
+
+            fileName="Coins/coins/build.gradle"
+
+            GLOBAL_APP_VERSION=$(grep -m 1 -w "GLOBAL_APP_VERSION =" $fileName | tr -cd "[0-9]")
+            echo "GLOBAL_APP_VERSION=${GLOBAL_APP_VERSION}"
+
+            MAJOR_FEATURE_VERSION=$(grep -m 1 -w "var MAJOR_FEATURE_VERSION =" $fileName | tr -cd "[0-9]")
+            echo "MAJOR_FEATURE_VERSION=${MAJOR_FEATURE_VERSION}"
+
+            MINOR_FEATURE_VERSION=$(grep -m 1 -w "var MINOR_FEATURE_VERSION =" $fileName | tr -cd "[0-9]")
+            echo "MINOR_FEATURE_VERSION=${MINOR_FEATURE_VERSION}"
+
+            BUGFIX_VERSION=$(grep -m 1 -w "var BUGFIX_VERSION =" $fileName | tr -cd "[0-9]")
+            echo "BUGFIX_VERSION=${BUGFIX_VERSION}"
+
+            version=$BITRISE_GIT_MESSAGE
+            echo "inputVersion=${version}"
+
+            if [[ $version =~ ^(v|version-)+[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              echo "✅ It must start with 'v' or 'version-' and be followed by a four-digit version number."
+              index=$(echo "$version" | grep -bo '[0-9]' | head -n 1 | cut -d: -f1)
+
+              if [ -n "$index" ]; then
+                result="${version:$index}"
+                echo "result: $result"
+                IFS='.' read -r -a arr <<<"$result"
+
+                len=${#arr[@]}
+
+                if [ ${#arr[@]} -eq 4 ]; then
+                  for ((i = 0; i < len; i++)); do
+                    if [ "$i" -eq 0 ]; then
+                      old="GLOBAL_APP_VERSION = ${GLOBAL_APP_VERSION}"
+                      new="GLOBAL_APP_VERSION = ${arr[$i]}"
+                      sed -i  "s/$old/$new/g" $fileName
+                    elif [ "$i" -eq 1 ]; then
+                      old="MAJOR_FEATURE_VERSION = ${MAJOR_FEATURE_VERSION}"
+                      new="MAJOR_FEATURE_VERSION = ${arr[$i]}"
+                      sed -i  "s/$old/$new/g" $fileName
+                    elif [ "$i" -eq 2 ]; then
+                      old="MINOR_FEATURE_VERSION = ${MINOR_FEATURE_VERSION}"
+                      new="MINOR_FEATURE_VERSION = ${arr[$i]}"
+                      sed -i "s/$old/$new/g" $fileName
+                    elif [ "$i" -eq 3 ]; then
+                      old="BUGFIX_VERSION = ${BUGFIX_VERSION}"
+                      new="BUGFIX_VERSION = ${arr[$i]}"
+                      sed -i "s/$old/$new/g" $fileName
+                    else
+                      old="BUGFIX_VERSION = ${BUGFIX_VERSION}"
+                      new="BUGFIX_VERSION = ${arr[$i]}"
+                      sed -i "s/$old/$new/g" $fileName
+                    fi
+                  done
+                else
+                  echo "The version format is not 4 digits"
+                fi
+              else
+                echo "not found '.'"
+              fi
+            else
+              echo "❌ Does not conform to the format, must start with 'v' or 'version-', suffixed with a four-digit version number"
+            fi
+
+            # or run a script from your repository, like:
+            # bash ./path/to/script.sh
+            # not just bash, e.g.:
+            # ruby ./path/to/script.rb
+    - script@1:
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            # fail if any commands fails
+            set -e
+            # make pipelines' return status equal the last command to exit with a non-zero status, or zero if all commands exit successfully
+            set -o pipefail
+            # debug log
+            set -x
+
+            # write your script here
+            echo "Hello World!"
+
+            current_dir=$(pwd)
+            echo "current_dir=${current_dir}"
+
+            folders=$(ls -l | grep '^d' | awk '{print $9}')
+
+            echo "$folders"
+
+            # or run a script from your repository, like:
+            # bash ./path/to/script.sh
+            # not just bash, e.g.:
+            # ruby ./path/to/script.rb
+
+            GLOBAL_APP_VERSION=$(grep -m 1 -w "var GLOBAL_APP_VERSION ="  Coins/coins/build.gradle | tr -cd "[0-9]")
+            echo "GLOBAL_APP_VERSION=${GLOBAL_APP_VERSION}"
+
+            MAJOR_FEATURE_VERSION=$(grep -m 1 -w "var MAJOR_FEATURE_VERSION =" Coins/coins/build.gradle | tr -cd "[0-9]")
+            echo "MAJOR_FEATURE_VERSION=${MAJOR_FEATURE_VERSION}"
+
+            MINOR_FEATURE_VERSION=$(grep -m 1 -w "var MINOR_FEATURE_VERSION =" Coins/coins/build.gradle | tr -cd "[0-9]")
+            echo "MINOR_FEATURE_VERSION=${MINOR_FEATURE_VERSION}"
+
+            BUGFIX_VERSION=$(grep -m 1 -w "var BUGFIX_VERSION =" Coins/coins/build.gradle | tr -cd "[0-9]")
+            echo "BUGFIX_VERSION=${BUGFIX_VERSION}"
+
+            appVersion="${GLOBAL_APP_VERSION}.${MAJOR_FEATURE_VERSION}.${MINOR_FEATURE_VERSION}.${BUGFIX_VERSION}"
+
+            envman add --key Coins_Android_App_Version --value "$appVersion"
+
+            echo "appVersion=${appVersion}"
+        title: Read the version
+    - slack@4:
+        is_always_run: false
+        inputs:
+        - channel: C072299UL5U
+        - pretext: "*Build Start!!:rocket::rocket::rocket:"
+        - webhook_url_on_error: "$SLACK_WEB_HOOK_URL_ANDROID"
+        - channel_on_error: C072299UL5U
+        - text_on_error: Build Failed!!
+        - fields: |
+            Version|${Coins_Android_App_Version}
+            App|${BITRISE_APP_TITLE}
+            Branch|${BITRISE_GIT_BRANCH}
+            Pipeline|${BITRISEIO_PIPELINE_TITLE}
+            Workflow|${BITRISE_TRIGGERED_WORKFLOW_ID}
+        - webhook_url: "$SLACK_WEB_HOOK_URL_ANDROID"
+    - install-missing-android-tools@3:
+        inputs:
+        - gradlew_path: "$PROJECT_LOCATION/gradlew"
+    - android-build@1:
+        inputs:
+        - module: "$MODULE"
+        - variant: "$PL_VARIANT_HUAWEI_PROD_RELEASE"
+        - project_location: "$PROJECT_LOCATION"
+    - android-build@1:
+        inputs:
+        - module: "$MODULE"
+        - variant: "$PL_VARIANT_HUAWEI_PROD_DEBUG"
+        - project_location: "$PROJECT_LOCATION"
+    - deploy-to-bitrise-io@2: {}
+    - cache-push@2: {}
+    - slack@4:
+        inputs:
+        - channel: C072299UL5U
+        - pretext:
+        - webhook_url_on_error: "$SLACK_WEB_HOOK_URL_ANDROID"
+        - channel_on_error: "#bitrise-android-robot"
+        - fields: |
+            Version|${Coins_Android_App_Version}
+            App|${BITRISE_APP_TITLE}
+            Branch|${BITRISE_GIT_BRANCH}
+            Pipeline|${BITRISEIO_PIPELINE_TITLE}
+            Workflow|${BITRISE_TRIGGERED_WORKFLOW_ID}
+        - text: "@amber *Build Succeeded!!:tada::tada::tada:"
+        - text_on_error: "*Build Failed!*"
+        - webhook_url: "$SLACK_WEB_HOOK_URL_ANDROID"
+    - script@1:
+        inputs:
+        - script_file_path:
+        - content: |-
+            #!/usr/bin/env bash
+            # fail if any commands fails
+            set -e
+            # make pipelines' return status equal the last command to exit with a non-zero status, or zero if all commands exit successfully
+            set -o pipefail
+            # debug log
+            set -x
+
+            # write your script here
+
+            apkPath=$BITRISE_APK_PATH
+            deployPath=$BITRISE_DEPLOY_DIR
+            echo "apkPath=$apkPath"
+            echo "deployPath=$deployPath"
+
+            releaseApkPath=$(find "$deployPath" -type f -name "*-release.apk")
+
+            if [ -z "$releaseApkPath" ]; then
+              echo "No files found in $directory with format *-release.apk."
+            else
+              envman add --key releaseApkPath --value "$releaseApkPath"
+              lambdaTestReleaseApkName=$(basename "$releaseApkPath")
+              envman add --key lambdaTestReleaseApkName --value "${lambdaTestReleaseApkName%.*}"
+              echo "Found files:$releaseApkPath"
+            fi
+
+            lambdaTestApkName=$(basename "$apkPath")
+            envman add --key lambdaTestApkName --value "${lambdaTestApkName%.*}"
+
+            # or run a script from your repository, like:
+            # bash ./path/to/script.sh
+            # not just bash, e.g.:
+            # ruby ./path/to/script.rb
+    - lambdatest-upload@4:
+        inputs:
+        - custom_id:
+        - lambdatest_username: "$LAMDA_TEST_USER_NAME"
+        - lambdatest_access_key: "$LAMDA_TEST_ACCESS_KEY"
+        - app_name: "${lambdaTestApkName}(${Coins_Android_App_Version}).apk"
+        - app_visibility: team
+        - upload_path: "$BITRISE_APK_PATH"
+    - lambdatest-upload@4:
+        inputs:
+        - custom_id:
+        - lambdatest_username: "$LAMDA_TEST_USER_NAME"
+        - lambdatest_access_key: "$LAMDA_TEST_ACCESS_KEY"
+        - app_name: "${lambdaTestReleaseApkName}(${Coins_Android_App_Version}).apk"
+        - app_visibility: team
+        - upload_path: "$releaseApkPath"
+    envs:
+    - ANDROID_KEYSTORE_URL: "$HOME/keystores/upload.jks"
+    - opts:
+        is_expand: false
+      PL_VARIANT_HUAWEI_PROD_RELEASE: HuaweiProdRelease
+    - opts:
+        is_expand: false
+      PL_VARIANT_HUAWEI_PROD_DEBUG: HuaweiProdDebug
+  pl-huawei-qa:
+    steps:
+    - set-java-version@1:
+        inputs:
+        - set_java_version: '17'
+    - activate-ssh-key@4:
+        run_if: '{{getenv "SSH_RSA_PRIVATE_KEY" | ne ""}}'
+    - git-clone@8.1: {}
+    - cache-pull@2: {}
+    - script@1:
+        title: Do anything with Script step
+    - file-downloader@1:
+        inputs:
+        - destination: "$ANDROID_KEYSTORE_URL"
+        - source: "$BITRISEIO_ANDROID_KEYSTORE_URL"
+    - script@1:
+        title: Modify the version
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            # fail if any commands fails
+            set -e
+            # make pipelines' return status equal the last command to exit with a non-zero status, or zero if all commands exit successfully
+            set -o pipefail
+            # debug log
+            set -x
+
+            # write your script here
+            #!/bin/bash
+
+            fileName="Coins/coins/build.gradle"
+
+            GLOBAL_APP_VERSION=$(grep -m 1 -w "GLOBAL_APP_VERSION =" $fileName | tr -cd "[0-9]")
+            echo "GLOBAL_APP_VERSION=${GLOBAL_APP_VERSION}"
+
+            MAJOR_FEATURE_VERSION=$(grep -m 1 -w "var MAJOR_FEATURE_VERSION =" $fileName | tr -cd "[0-9]")
+            echo "MAJOR_FEATURE_VERSION=${MAJOR_FEATURE_VERSION}"
+
+            MINOR_FEATURE_VERSION=$(grep -m 1 -w "var MINOR_FEATURE_VERSION =" $fileName | tr -cd "[0-9]")
+            echo "MINOR_FEATURE_VERSION=${MINOR_FEATURE_VERSION}"
+
+            BUGFIX_VERSION=$(grep -m 1 -w "var BUGFIX_VERSION =" $fileName | tr -cd "[0-9]")
+            echo "BUGFIX_VERSION=${BUGFIX_VERSION}"
+
+            version=$BITRISE_GIT_MESSAGE
+            echo "inputVersion=${version}"
+
+            if [[ $version =~ ^(v|version-)+[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              echo "✅ It must start with 'v' or 'version-' and be followed by a four-digit version number."
+              index=$(echo "$version" | grep -bo '[0-9]' | head -n 1 | cut -d: -f1)
+
+              if [ -n "$index" ]; then
+                result="${version:$index}"
+                echo "result: $result"
+                IFS='.' read -r -a arr <<<"$result"
+
+                len=${#arr[@]}
+
+                if [ ${#arr[@]} -eq 4 ]; then
+                  for ((i = 0; i < len; i++)); do
+                    if [ "$i" -eq 0 ]; then
+                      old="GLOBAL_APP_VERSION = ${GLOBAL_APP_VERSION}"
+                      new="GLOBAL_APP_VERSION = ${arr[$i]}"
+                      sed -i  "s/$old/$new/g" $fileName
+                    elif [ "$i" -eq 1 ]; then
+                      old="MAJOR_FEATURE_VERSION = ${MAJOR_FEATURE_VERSION}"
+                      new="MAJOR_FEATURE_VERSION = ${arr[$i]}"
+                      sed -i  "s/$old/$new/g" $fileName
+                    elif [ "$i" -eq 2 ]; then
+                      old="MINOR_FEATURE_VERSION = ${MINOR_FEATURE_VERSION}"
+                      new="MINOR_FEATURE_VERSION = ${arr[$i]}"
+                      sed -i "s/$old/$new/g" $fileName
+                    elif [ "$i" -eq 3 ]; then
+                      old="BUGFIX_VERSION = ${BUGFIX_VERSION}"
+                      new="BUGFIX_VERSION = ${arr[$i]}"
+                      sed -i "s/$old/$new/g" $fileName
+                    else
+                      old="BUGFIX_VERSION = ${BUGFIX_VERSION}"
+                      new="BUGFIX_VERSION = ${arr[$i]}"
+                      sed -i "s/$old/$new/g" $fileName
+                    fi
+                  done
+                else
+                  echo "The version format is not 4 digits"
+                fi
+              else
+                echo "not found '.'"
+              fi
+            else
+              echo "❌ Does not conform to the format, must start with 'v' or 'version-', suffixed with a four-digit version number"
+            fi
+
+            # or run a script from your repository, like:
+            # bash ./path/to/script.sh
+            # not just bash, e.g.:
+            # ruby ./path/to/script.rb
+    - script@1:
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            # fail if any commands fails
+            set -e
+            # make pipelines' return status equal the last command to exit with a non-zero status, or zero if all commands exit successfully
+            set -o pipefail
+            # debug log
+            set -x
+
+            # write your script here
+            echo "Hello World!"
+
+            current_dir=$(pwd)
+            echo "current_dir=${current_dir}"
+
+            folders=$(ls -l | grep '^d' | awk '{print $9}')
+
+            echo "$folders"
+
+            # or run a script from your repository, like:
+            # bash ./path/to/script.sh
+            # not just bash, e.g.:
+            # ruby ./path/to/script.rb
+
+            GLOBAL_APP_VERSION=$(grep -m 1 -w "var GLOBAL_APP_VERSION ="  Coins/coins/build.gradle | tr -cd "[0-9]")
+            echo "GLOBAL_APP_VERSION=${GLOBAL_APP_VERSION}"
+
+            MAJOR_FEATURE_VERSION=$(grep -m 1 -w "var MAJOR_FEATURE_VERSION =" Coins/coins/build.gradle | tr -cd "[0-9]")
+            echo "MAJOR_FEATURE_VERSION=${MAJOR_FEATURE_VERSION}"
+
+            MINOR_FEATURE_VERSION=$(grep -m 1 -w "var MINOR_FEATURE_VERSION =" Coins/coins/build.gradle | tr -cd "[0-9]")
+            echo "MINOR_FEATURE_VERSION=${MINOR_FEATURE_VERSION}"
+
+            BUGFIX_VERSION=$(grep -m 1 -w "var BUGFIX_VERSION =" Coins/coins/build.gradle | tr -cd "[0-9]")
+            echo "BUGFIX_VERSION=${BUGFIX_VERSION}"
+
+            appVersion="${GLOBAL_APP_VERSION}.${MAJOR_FEATURE_VERSION}.${MINOR_FEATURE_VERSION}.${BUGFIX_VERSION}"
+
+            envman add --key Coins_Android_App_Version --value "$appVersion"
+
+            echo "appVersion=${appVersion}"
+        title: Read the version
+    - slack@4:
+        inputs:
+        - channel: C072299UL5U
+        - pretext: "*Build Start!! :rocket::rocket::rocket:"
+        - webhook_url_on_error: "$SLACK_WEB_HOOK_URL_ANDROID"
+        - channel_on_error: C072299UL5U
+        - text_on_error: "*Build FAILED!! :catcrying::catcrying::catcrying:"
+        - buttons: |
+            View App|${BITRISE_APP_URL}
+            View Pipeline Build|${BITRISEIO_PIPELINE_BUILD_URL}
+            View Workflow Build|${BITRISE_BUILD_URL}
+        - fields: |
+            Version|${Coins_Android_App_Version}
+            App|${BITRISE_APP_TITLE}
+            Branch|${BITRISE_GIT_BRANCH}
+            Pipeline|${BITRISEIO_PIPELINE_TITLE}
+            Workflow|${BITRISE_TRIGGERED_WORKFLOW_ID}
+        - webhook_url: "$SLACK_WEB_HOOK_URL_ANDROID"
+    - install-missing-android-tools@3:
+        inputs:
+        - gradlew_path: "$PROJECT_LOCATION/gradlew"
+    - android-build@1:
+        inputs:
+        - module: "$MODULE"
+        - variant: "$PL_VARIANT_HUAWEI_QA_RELEASE"
+        - project_location: "$PROJECT_LOCATION"
+    - android-build@1:
+        inputs:
+        - module: "$MODULE"
+        - variant: "$PL_VARIANT_HUAWEI_QA_DEBUG"
+        - project_location: "$PROJECT_LOCATION"
+    - deploy-to-bitrise-io@2: {}
+    - cache-push@2: {}
+    - slack@4:
+        inputs:
+        - channel: C072299UL5U
+        - pretext:
+        - webhook_url_on_error: "$SLACK_WEB_HOOK_URL_ANDROID"
+        - text_on_error: 'Build Failed!! :catcrying::catcrying::catcrying:'
+        - pretext_on_error: "*Build Failed!* :catcrying::catcrying::catcrying:"
+        - buttons: |
+            View App|${BITRISE_APP_URL}
+            View Pipeline Build|${BITRISEIO_PIPELINE_BUILD_URL}
+            View Workflow Build|${BITRISE_BUILD_URL}
+        - fields: |
+            Version|${Coins_Android_App_Version}
+            App|${BITRISE_APP_TITLE}
+            Branch|${BITRISE_GIT_BRANCH}
+            Pipeline|${BITRISEIO_PIPELINE_TITLE}
+            Workflow|${BITRISE_TRIGGERED_WORKFLOW_ID}
+        - text: "@amber *Build Succeeded!!:tada::tada::tada:"
+        - webhook_url: "$SLACK_WEB_HOOK_URL_ANDROID"
+    - script@1:
+        inputs:
+        - script_file_path:
+        - content: |-
+            #!/usr/bin/env bash
+            # fail if any commands fails
+            set -e
+            # make pipelines' return status equal the last command to exit with a non-zero status, or zero if all commands exit successfully
+            set -o pipefail
+            # debug log
+            set -x
+
+            # write your script here
+
+            apkPath=$BITRISE_APK_PATH
+            deployPath=$BITRISE_DEPLOY_DIR
+            echo "apkPath=$apkPath"
+            echo "deployPath=$deployPath"
+
+            releaseApkPath=$(find "$deployPath" -type f -name "*-release.apk")
+
+            if [ -z "$releaseApkPath" ]; then
+              echo "No files found in $directory with format *-release.apk."
+            else
+              envman add --key releaseApkPath --value "$releaseApkPath"
+              lambdaTestReleaseApkName=$(basename "$releaseApkPath")
+              envman add --key lambdaTestReleaseApkName --value "${lambdaTestReleaseApkName%.*}"
+              echo "Found files:$releaseApkPath"
+            fi
+
+            lambdaTestApkName=$(basename "$apkPath")
+            envman add --key lambdaTestApkName --value "${lambdaTestApkName%.*}"
+
+            # or run a script from your repository, like:
+            # bash ./path/to/script.sh
+            # not just bash, e.g.:
+            # ruby ./path/to/script.rb
+    - lambdatest-upload@4:
+        inputs:
+        - custom_id:
+        - lambdatest_username: "$LAMDA_TEST_USER_NAME"
+        - lambdatest_access_key: "$LAMDA_TEST_ACCESS_KEY"
+        - app_name: "${lambdaTestApkName}(${Coins_Android_App_Version}).apk"
+        - app_visibility: team
+        - upload_path: "$BITRISE_APK_PATH"
+    - lambdatest-upload@4:
+        inputs:
+        - custom_id:
+        - lambdatest_username: "$LAMDA_TEST_USER_NAME"
+        - lambdatest_access_key: "$LAMDA_TEST_ACCESS_KEY"
+        - app_name: "${lambdaTestReleaseApkName}(${Coins_Android_App_Version}).apk"
+        - app_visibility: team
+        - upload_path: "$releaseApkPath"
+    envs:
+    - ANDROID_KEYSTORE_URL: "$HOME/keystores/upload.jks"
+    - opts:
+        is_expand: false
+      PL_VARIANT_HUAWEI_QA_RELEASE: HuaweiQaRelease
+    - opts:
+        is_expand: false
+      PL_VARIANT_HUAWEI_QA_DEBUG: HuaweiQaDebug
+    - opts:
+        is_expand: false
+      LAMDA_TEST_USER_NAME: jasoncoins
+    - opts:
+        is_expand: false
+      LAMDA_TEST_ACCESS_KEY: YbQJ2NhN3fOhzTvoUURhD5nTnFY9UAOUUnA0fGyhuaLp95gYC8
+  pl-huawei-stage:
+    steps:
+    - set-java-version@1:
+        inputs:
+        - set_java_version: '17'
+    - activate-ssh-key@4:
+        run_if: '{{getenv "SSH_RSA_PRIVATE_KEY" | ne ""}}'
+    - git-clone@6: {}
+    - cache-pull@2: {}
+    - script@1:
+        title: Do anything with Script step
+        inputs:
+        - script_file_path:
+        - content: |
+            #!/usr/bin/env bash
+            # fail if any commands fails
+            set -e
+            # make pipelines' return status equal the last command to exit with a non-zero status, or zero if all commands exit successfully
+            set -o pipefail
+            # debug log
+            set -x
+
+            # write your script here
+            echo "Hello World!"
+
+            current_dir=$(pwd)
+            echo "current_dir=${current_dir}"
+
+            # 列出当前目录下的文件和文件夹，并通过grep过滤出文件夹
+            folders=$(ls -l | grep '^d' | awk '{print $9}')
+
+            # 打印文件夹列表
+            echo "当前目录下的文件夹有:"
+            echo "$folders"
+
+            # or run a script from your repository, like:
+            # bash ./path/to/script.sh
+            # not just bash, e.g.:
+            # ruby ./path/to/script.rb
+
+            GLOBAL_APP_VERSION=$(grep -m 1 -w "var GLOBAL_APP_VERSION ="  Coins/coins/build.gradle | tr -cd "[0-9]")
+            echo "GLOBAL_APP_VERSION=${GLOBAL_APP_VERSION}"
+
+            MAJOR_FEATURE_VERSION=$(grep -m 1 -w "var MAJOR_FEATURE_VERSION =" Coins/coins/build.gradle | tr -cd "[0-9]")
+            echo "MAJOR_FEATURE_VERSION=${MAJOR_FEATURE_VERSION}"
+
+            MINOR_FEATURE_VERSION=$(grep -m 1 -w "var GLOBAL_APP_VERSION =" Coins/coins/build.gradle | tr -cd "[0-9]")
+            echo "MINOR_FEATURE_VERSION=${MINOR_FEATURE_VERSION}"
+
+            BUGFIX_VERSION=$(grep -m 1 -w "var MAJOR_FEATURE_VERSION =" Coins/coins/build.gradle | tr -cd "[0-9]")
+            echo "BUGFIX_VERSION=${BUGFIX_VERSION}"
+
+            appVersion="${GLOBAL_APP_VERSION}.${MAJOR_FEATURE_VERSION}.${MINOR_FEATURE_VERSION}.${BUGFIX_VERSION}"
+
+            envman add --key Coins_Android_App_Version --value "$appVersion"
+
+            echo "appVersion=${appVersion}"
+    - file-downloader@1:
+        inputs:
+        - destination: "$ANDROID_KEYSTORE_URL"
+        - source: "$BITRISEIO_ANDROID_KEYSTORE_URL"
+    - script@1:
+        title: Modify the version
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            # fail if any commands fails
+            set -e
+            # make pipelines' return status equal the last command to exit with a non-zero status, or zero if all commands exit successfully
+            set -o pipefail
+            # debug log
+            set -x
+
+            # write your script here
+            #!/bin/bash
+
+            fileName="Coins/coins/build.gradle"
+
+            GLOBAL_APP_VERSION=$(grep -m 1 -w "GLOBAL_APP_VERSION =" $fileName | tr -cd "[0-9]")
+            echo "GLOBAL_APP_VERSION=${GLOBAL_APP_VERSION}"
+
+            MAJOR_FEATURE_VERSION=$(grep -m 1 -w "var MAJOR_FEATURE_VERSION =" $fileName | tr -cd "[0-9]")
+            echo "MAJOR_FEATURE_VERSION=${MAJOR_FEATURE_VERSION}"
+
+            MINOR_FEATURE_VERSION=$(grep -m 1 -w "var MINOR_FEATURE_VERSION =" $fileName | tr -cd "[0-9]")
+            echo "MINOR_FEATURE_VERSION=${MINOR_FEATURE_VERSION}"
+
+            BUGFIX_VERSION=$(grep -m 1 -w "var BUGFIX_VERSION =" $fileName | tr -cd "[0-9]")
+            echo "BUGFIX_VERSION=${BUGFIX_VERSION}"
+
+            version=$BITRISE_GIT_MESSAGE
+            echo "inputVersion=${version}"
+
+            if [[ $version =~ ^(v|version-)+[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              echo "✅ It must start with 'v' or 'version-' and be followed by a four-digit version number."
+              index=$(echo "$version" | grep -bo '[0-9]' | head -n 1 | cut -d: -f1)
+
+              if [ -n "$index" ]; then
+                result="${version:$index}"
+                echo "result: $result"
+                IFS='.' read -r -a arr <<<"$result"
+
+                len=${#arr[@]}
+
+                if [ ${#arr[@]} -eq 4 ]; then
+                  for ((i = 0; i < len; i++)); do
+                    if [ "$i" -eq 0 ]; then
+                      old="GLOBAL_APP_VERSION = ${GLOBAL_APP_VERSION}"
+                      new="GLOBAL_APP_VERSION = ${arr[$i]}"
+                      sed -i  "s/$old/$new/g" $fileName
+                    elif [ "$i" -eq 1 ]; then
+                      old="MAJOR_FEATURE_VERSION = ${MAJOR_FEATURE_VERSION}"
+                      new="MAJOR_FEATURE_VERSION = ${arr[$i]}"
+                      sed -i  "s/$old/$new/g" $fileName
+                    elif [ "$i" -eq 2 ]; then
+                      old="MINOR_FEATURE_VERSION = ${MINOR_FEATURE_VERSION}"
+                      new="MINOR_FEATURE_VERSION = ${arr[$i]}"
+                      sed -i "s/$old/$new/g" $fileName
+                    elif [ "$i" -eq 3 ]; then
+                      old="BUGFIX_VERSION = ${BUGFIX_VERSION}"
+                      new="BUGFIX_VERSION = ${arr[$i]}"
+                      sed -i "s/$old/$new/g" $fileName
+                    else
+                      old="BUGFIX_VERSION = ${BUGFIX_VERSION}"
+                      new="BUGFIX_VERSION = ${arr[$i]}"
+                      sed -i "s/$old/$new/g" $fileName
+                    fi
+                  done
+                else
+                  echo "The version format is not 4 digits"
+                fi
+              else
+                echo "not found '.'"
+              fi
+            else
+              echo "❌ Does not conform to the format, must start with 'v' or 'version-', suffixed with a four-digit version number"
+            fi
+
+            # or run a script from your repository, like:
+            # bash ./path/to/script.sh
+            # not just bash, e.g.:
+            # ruby ./path/to/script.rb
+    - script@1:
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            # fail if any commands fails
+            set -e
+            # make pipelines' return status equal the last command to exit with a non-zero status, or zero if all commands exit successfully
+            set -o pipefail
+            # debug log
+            set -x
+
+            # write your script here
+            echo "Hello World!"
+
+            current_dir=$(pwd)
+            echo "current_dir=${current_dir}"
+
+            folders=$(ls -l | grep '^d' | awk '{print $9}')
+
+            echo "$folders"
+
+            # or run a script from your repository, like:
+            # bash ./path/to/script.sh
+            # not just bash, e.g.:
+            # ruby ./path/to/script.rb
+
+            GLOBAL_APP_VERSION=$(grep -m 1 -w "var GLOBAL_APP_VERSION ="  Coins/coins/build.gradle | tr -cd "[0-9]")
+            echo "GLOBAL_APP_VERSION=${GLOBAL_APP_VERSION}"
+
+            MAJOR_FEATURE_VERSION=$(grep -m 1 -w "var MAJOR_FEATURE_VERSION =" Coins/coins/build.gradle | tr -cd "[0-9]")
+            echo "MAJOR_FEATURE_VERSION=${MAJOR_FEATURE_VERSION}"
+
+            MINOR_FEATURE_VERSION=$(grep -m 1 -w "var MINOR_FEATURE_VERSION =" Coins/coins/build.gradle | tr -cd "[0-9]")
+            echo "MINOR_FEATURE_VERSION=${MINOR_FEATURE_VERSION}"
+
+            BUGFIX_VERSION=$(grep -m 1 -w "var BUGFIX_VERSION =" Coins/coins/build.gradle | tr -cd "[0-9]")
+            echo "BUGFIX_VERSION=${BUGFIX_VERSION}"
+
+            appVersion="${GLOBAL_APP_VERSION}.${MAJOR_FEATURE_VERSION}.${MINOR_FEATURE_VERSION}.${BUGFIX_VERSION}"
+
+            envman add --key Coins_Android_App_Version --value "$appVersion"
+
+            echo "appVersion=${appVersion}"
+        title: Read the version
+    - slack@4:
+        is_always_run: false
+        inputs:
+        - channel: C072299UL5U
+        - pretext: "*Build Start!!:rocket::rocket::rocket:"
+        - webhook_url_on_error: "$SLACK_WEB_HOOK_URL_ANDROID"
+        - channel_on_error: C072299UL5U
+        - fields: |
+            Version|${Coins_Android_App_Version}
+            App|${BITRISE_APP_TITLE}
+            Branch|${BITRISE_GIT_BRANCH}
+            Pipeline|${BITRISEIO_PIPELINE_TITLE}
+            Workflow|${BITRISE_TRIGGERED_WORKFLOW_ID}
+        - webhook_url: "$SLACK_WEB_HOOK_URL_ANDROID"
+    - install-missing-android-tools@3:
+        inputs:
+        - gradlew_path: "$PROJECT_LOCATION/gradlew"
+    - android-build@1:
+        inputs:
+        - module: "$MODULE"
+        - variant: "$PL_VARIANT_HUAWEI_STAGE_RELEASE"
+        - project_location: "$PROJECT_LOCATION"
+    - android-build@1:
+        inputs:
+        - module: "$MODULE"
+        - variant: "$PL_VARIANT_HUAWEI_STAGE_DEBUG"
+        - project_location: "$PROJECT_LOCATION"
+    - deploy-to-bitrise-io@2: {}
+    - cache-push@2: {}
+    - slack@4:
+        inputs:
+        - channel: C072299UL5U
+        - pretext:
+        - webhook_url_on_error: "$SLACK_WEB_HOOK_URL_ANDROID"
+        - channel_on_error: C072299UL5U
+        - text_on_error: Build failed!!
+        - fields: |
+            Version|${Coins_Android_App_Version}
+            App|${BITRISE_APP_TITLE}
+            Branch|${BITRISE_GIT_BRANCH}
+            Pipeline|${BITRISEIO_PIPELINE_TITLE}
+            Workflow|${BITRISE_TRIGGERED_WORKFLOW_ID}
+        - text: "@amber *Build Succeeded!!:tada::tada::tada:"
+        - webhook_url: "$SLACK_WEB_HOOK_URL_ANDROID"
+    - script@1:
+        inputs:
+        - script_file_path:
+        - content: |-
+            #!/usr/bin/env bash
+            # fail if any commands fails
+            set -e
+            # make pipelines' return status equal the last command to exit with a non-zero status, or zero if all commands exit successfully
+            set -o pipefail
+            # debug log
+            set -x
+
+            # write your script here
+
+            apkPath=$BITRISE_APK_PATH
+            deployPath=$BITRISE_DEPLOY_DIR
+            echo "apkPath=$apkPath"
+            echo "deployPath=$deployPath"
+
+            releaseApkPath=$(find "$deployPath" -type f -name "*-release.apk")
+
+            if [ -z "$releaseApkPath" ]; then
+              echo "No files found in $directory with format *-release.apk."
+            else
+              envman add --key releaseApkPath --value "$releaseApkPath"
+              lambdaTestReleaseApkName=$(basename "$releaseApkPath")
+              envman add --key lambdaTestReleaseApkName --value "${lambdaTestReleaseApkName%.*}"
+              echo "Found files:$releaseApkPath"
+            fi
+
+            lambdaTestApkName=$(basename "$apkPath")
+            envman add --key lambdaTestApkName --value "${lambdaTestApkName%.*}"
+
+            # or run a script from your repository, like:
+            # bash ./path/to/script.sh
+            # not just bash, e.g.:
+            # ruby ./path/to/script.rb
+    - lambdatest-upload@4:
+        inputs:
+        - custom_id:
+        - lambdatest_username: "$LAMDA_TEST_USER_NAME"
+        - lambdatest_access_key: "$LAMDA_TEST_ACCESS_KEY"
+        - app_name: "${lambdaTestApkName}(${Coins_Android_App_Version}).apk"
+        - app_visibility: team
+        - upload_path: "$BITRISE_APK_PATH"
+    - lambdatest-upload@4:
+        inputs:
+        - custom_id:
+        - lambdatest_username: "$LAMDA_TEST_USER_NAME"
+        - lambdatest_access_key: "$LAMDA_TEST_ACCESS_KEY"
+        - app_name: "${lambdaTestReleaseApkName}(${Coins_Android_App_Version}).apk"
+        - app_visibility: team
+        - upload_path: "$releaseApkPath"
+    envs:
+    - ANDROID_KEYSTORE_URL: "$HOME/keystores/upload.jks"
+    - opts:
+        is_expand: false
+      PL_VARIANT_HUAWEI_STAGE_RELEASE: HuaweiStageRelease
+    - opts:
+        is_expand: false
+      PL_VARIANT_HUAWEI_STAGE_DEBUG: HuaweiStageDebug
+  prod-google-play-only-deploy:
+    steps:
+    - set-java-version@1:
+        inputs:
+        - set_java_version: '17'
+    - activate-ssh-key@4:
+        run_if: '{{getenv "SSH_RSA_PRIVATE_KEY" | ne ""}}'
+    - git-clone@8.1: {}
+    - cache-pull@2: {}
+    - file-downloader@1:
+        inputs:
+        - destination: "$ANDROID_KEYSTORE_URL"
+        - source: "$BITRISEIO_ANDROID_KEYSTORE_URL"
+    - slack@4:
+        inputs:
+        - channel: C072299UL5U
+        - pretext: "*Build Start!! :rocket::rocket::rocket:"
+        - fields: |
+            Version|${Coins_Android_App_Version}
+            App|${BITRISE_APP_TITLE}
+            Branch|${BITRISE_GIT_BRANCH}
+            Pipeline|${BITRISEIO_PIPELINE_TITLE}
+            Workflow|${BITRISE_TRIGGERED_WORKFLOW_ID}
+        - buttons: |
+            View App|${BITRISE_APP_URL}
+            View Pipeline Build|${BITRISEIO_PIPELINE_BUILD_URL}
+            View Workflow Build|${BITRISE_BUILD_URL}
+        - webhook_url_on_error: "$SLACK_WEB_HOOK_URL_ANDROID"
+        - channel_on_error: C072299UL5U
+        - pretext_on_error: "*Build FAILED!! :catcrying::catcrying::catcrying:"
+        - webhook_url: "$SLACK_WEB_HOOK_URL_ANDROID"
+    - install-missing-android-tools@3:
+        inputs:
+        - gradlew_path: "$PROJECT_LOCATION/gradlew"
+    - android-lint@0:
+        inputs:
+        - project_location: "$PROJECT_LOCATION"
+        - module: "$MODULE"
+        - variant: "$PL_VARIANT_GOOGLE_PROD_RELEASE"
+    - gradle-runner@2.0:
+        inputs:
+        - gradle_task: bundleGoogleProdRelease
+        is_always_run: true
+    - android-build@1:
+        inputs:
+        - module: "$MODULE"
+        - variant: "$PL_VARIANT_GOOGLE_PROD_RELEASE"
+        - project_location: "$PROJECT_LOCATION"
+    - android-build@1:
+        inputs:
+        - module: "$MODULE"
+        - variant: "$PL_VARIANT_GOOGLE_PROD_RELEASE"
+        - build_type: aab
+        - project_location: "$PROJECT_LOCATION"
+    - sign-apk@1:
+        inputs:
+        - debuggable_permitted: 'false'
+        - use_apk_signer: 'true'
+        - signer_scheme: v4
+        - android_app: "$BITRISE_APK_PATH|$BITRISE_AAB_PATH"
+    - google-play-deploy@3:
+        inputs:
+        - service_account_json_key_path: "$BITRISEIO_SERVICE_ACCOUNT_JSON_URL"
+        - track: internal
+        - app_path: "$BITRISE_SIGNED_AAB_PATH"
+        - retry_without_sending_to_review: 'true'
+        - package_name: asia.coins.mobile
+    - script@1:
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            # fail if any commands fails
+            set -e
+            # debug log
+            set -x
+
+            # write your script here
+            echo "Removing temporary build files"
+            find . -name "Coins-coins-mapping*.txt" -type f -delete
+            find . -name "coins-prod-release*.aab" -type f -delete
+            find . -name "Coins-coins-prod-release.a*" -type f -delete
+        - working_dir: "$BITRISE_DEPLOY_DIR"
+        - is_debug: 'yes'
+    - deploy-to-bitrise-io@2:
+        inputs:
+        - generate_universal_apk_if_none: 'false'
+    - cache-push@2: {}
+    - slack@4:
+        inputs:
+        - channel: C072299UL5U
+        - pretext: "*Build Succeeded!!* :tada::tada::tada:"
+        - fields: |
+            Version|${Coins_Android_App_Version}
+            App|${BITRISE_APP_TITLE}
+            Branch|${BITRISE_GIT_BRANCH}
+            Pipeline|${BITRISEIO_PIPELINE_TITLE}
+            Workflow|${BITRISE_TRIGGERED_WORKFLOW_ID}
+        - buttons: |
+            View App|${BITRISE_APP_URL}
+            View Pipeline Build|${BITRISEIO_PIPELINE_BUILD_URL}
+            View Workflow Build|${BITRISE_BUILD_URL}
+        - webhook_url_on_error: "$SLACK_WEB_HOOK_URL_ANDROID"
+        - text_on_error: 'Build Failed!! :catcrying::catcrying::catcrying:'
+        - pretext_on_error: 'Build Failed!! :catcrying::catcrying::catcrying:'
+        - webhook_url: "$SLACK_WEB_HOOK_URL_ANDROID"
+    envs:
+    - ANDROID_KEYSTORE_URL: "$HOME/keystores/upload.jks"
+    - APP_PACKAGE_NAME: asia.coins.mobile
+    - GRADLE_BUILD_FILE_PATH: Coins/build.gradle
+      opts:
+        is_expand: false
+    - opts:
+        is_expand: false
+      GRADLEW_PATH: Coins/gradlew
+    - opts:
+        is_expand: false
+      PL_VARIANT_GOOGLE_PROD_RELEASE: GoogleProdRelease
+    description: ''
+  prod-google-play-only-deploy-no-upload:
+    steps:
+    - set-java-version@1:
+        inputs:
+        - set_java_version: '17'
+    - activate-ssh-key@4:
+        run_if: '{{getenv "SSH_RSA_PRIVATE_KEY" | ne ""}}'
+    - git-clone@8.1: {}
+    - cache-pull@2: {}
+    - file-downloader@1:
+        inputs:
+        - destination: "$ANDROID_KEYSTORE_URL"
+        - source: "$BITRISEIO_ANDROID_KEYSTORE_URL"
+    - script@1:
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            # fail if any commands fails
+            set -e
+            # make pipelines' return status equal the last command to exit with a non-zero status, or zero if all commands exit successfully
+            set -o pipefail
+            # debug log
+            set -x
+
+            # write your script here
+            echo "Hello World!"
+
+            current_dir=$(pwd)
+            echo "current_dir=${current_dir}"
+
+            # 列出当前目录下的文件和文件夹，并通过grep过滤出文件夹
+            folders=$(ls -l | grep '^d' | awk '{print $9}')
+
+            # 打印文件夹列表
+            echo "当前目录下的文件夹有:"
+            echo "$folders"
+
+            # or run a script from your repository, like:
+            # bash ./path/to/script.sh
+            # not just bash, e.g.:
+            # ruby ./path/to/script.rb
+
+            GLOBAL_APP_VERSION=$(grep -m 1 -w "var GLOBAL_APP_VERSION ="  Coins/coins/build.gradle | tr -cd "[0-9]")
+            echo "GLOBAL_APP_VERSION=${GLOBAL_APP_VERSION}"
+
+            MAJOR_FEATURE_VERSION=$(grep -m 1 -w "var MAJOR_FEATURE_VERSION =" Coins/coins/build.gradle | tr -cd "[0-9]")
+            echo "MAJOR_FEATURE_VERSION=${MAJOR_FEATURE_VERSION}"
+
+            MINOR_FEATURE_VERSION=$(grep -m 1 -w "var MINOR_FEATURE_VERSION =" Coins/coins/build.gradle | tr -cd "[0-9]")
+            echo "MINOR_FEATURE_VERSION=${MINOR_FEATURE_VERSION}"
+
+            BUGFIX_VERSION=$(grep -m 1 -w "var BUGFIX_VERSION =" Coins/coins/build.gradle | tr -cd "[0-9]")
+            echo "BUGFIX_VERSION=${BUGFIX_VERSION}"
+
+            appVersion="${GLOBAL_APP_VERSION}.${MAJOR_FEATURE_VERSION}.${MINOR_FEATURE_VERSION}.${BUGFIX_VERSION}"
+
+            envman add --key Coins_Android_App_Version --value "$appVersion"
+
+            if [[ "${BITRISE_GIT_BRANCH}" == master ]] || [[ "${BITRISE_GIT_BRANCH}" == hotfix/* ]] || [[ "${BITRISE_GIT_BRANCH}" == release/* ]]; then
+              echo "currrent branch:${BITRISE_GIT_BRANCH} conforms master or hotfix/* or release/* format"
+            else
+              echo "currrent branch:${BITRISE_GIT_BRANCH} must conforms hotfix/* or release/* format"
+              exit 1
+            fi
+
+            echo "appVersion=${appVersion}"
+    - slack@4:
+        inputs:
+        - channel: C072299UL5U
+        - pretext: "*Build Start!! :rocket::rocket::rocket:"
+        - fields: |
+            Version|${Coins_Android_App_Version}
+            App|${BITRISE_APP_TITLE}
+            Branch|${BITRISE_GIT_BRANCH}
+            Pipeline|${BITRISEIO_PIPELINE_TITLE}
+            Workflow|${BITRISE_TRIGGERED_WORKFLOW_ID}
+        - buttons: |
+            View App|${BITRISE_APP_URL}
+            View Pipeline Build|${BITRISEIO_PIPELINE_BUILD_URL}
+            View Workflow Build|${BITRISE_BUILD_URL}
+        - webhook_url_on_error: "$SLACK_WEB_HOOK_URL_ANDROID"
+        - channel_on_error: C072299UL5U
+        - pretext_on_error: "*Build FAILED!! :catcrying::catcrying::catcrying:"
+        - webhook_url: "$SLACK_WEB_HOOK_URL_ANDROID"
+    - install-missing-android-tools@3:
+        inputs:
+        - gradlew_path: "$PROJECT_LOCATION/gradlew"
+    - android-lint@0:
+        inputs:
+        - project_location: "$PROJECT_LOCATION"
+        - module: "$MODULE"
+        - variant: "$PL_VARIANT_GOOGLE_PROD_RELEASE"
+    - gradle-runner@2.0:
+        inputs:
+        - gradle_task: bundleGoogleProdRelease
+        is_always_run: true
+    - android-build@1:
+        inputs:
+        - module: "$MODULE"
+        - variant: "$PL_VARIANT_GOOGLE_PROD_RELEASE"
+        - project_location: "$PROJECT_LOCATION"
+    - android-build@1:
+        inputs:
+        - module: "$MODULE"
+        - variant: "$PL_VARIANT_GOOGLE_PROD_RELEASE"
+        - build_type: aab
+        - project_location: "$PROJECT_LOCATION"
+    - sign-apk@1:
+        inputs:
+        - debuggable_permitted: 'false'
+        - use_apk_signer: 'true'
+        - signer_scheme: v4
+        - android_app: "$BITRISE_APK_PATH|$BITRISE_AAB_PATH"
+    - deploy-to-bitrise-io@2: {}
+    - cache-push@2: {}
+    - slack@4:
+        inputs:
+        - channel: C072299UL5U
+        - pretext: "*Build Succeeded!!* :tada::tada::tada:"
+        - fields: |
+            Version|${Coins_Android_App_Version}
+            App|${BITRISE_APP_TITLE}
+            Branch|${BITRISE_GIT_BRANCH}
+            Pipeline|${BITRISEIO_PIPELINE_TITLE}
+            Workflow|${BITRISE_TRIGGERED_WORKFLOW_ID}
+        - buttons: |
+            View App|${BITRISE_APP_URL}
+            View Pipeline Build|${BITRISEIO_PIPELINE_BUILD_URL}
+            View Workflow Build|${BITRISE_BUILD_URL}
+        - webhook_url_on_error: "$SLACK_WEB_HOOK_URL_ANDROID"
+        - text_on_error: 'Build Failed!! :catcrying::catcrying::catcrying:'
+        - pretext_on_error: 'Build Failed!! :catcrying::catcrying::catcrying:'
+        - webhook_url: "$SLACK_WEB_HOOK_URL_ANDROID"
+    envs:
+    - ANDROID_KEYSTORE_URL: "$HOME/keystores/upload.jks"
+    - APP_PACKAGE_NAME: asia.coins.mobile
+    - GRADLE_BUILD_FILE_PATH: Coins/build.gradle
+      opts:
+        is_expand: false
+    - opts:
+        is_expand: false
+      GRADLEW_PATH: Coins/gradlew
+    - opts:
+        is_expand: false
+      PL_VARIANT_GOOGLE_PROD_RELEASE: GoogleProdRelease
+    description: ''
+  prod-huawei-only-deploy:
+    steps:
+    - set-java-version@1:
+        inputs:
+        - set_java_version: '17'
+    - activate-ssh-key@4:
+        run_if: '{{getenv "SSH_RSA_PRIVATE_KEY" | ne ""}}'
+    - git-clone@8.1: {}
+    - cache-pull@2: {}
+    - file-downloader@1:
+        inputs:
+        - destination: "$ANDROID_KEYSTORE_URL"
+        - source: "$BITRISEIO_ANDROID_KEYSTORE_URL"
+    - script@1:
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            # fail if any commands fails
+            set -e
+            # make pipelines' return status equal the last command to exit with a non-zero status, or zero if all commands exit successfully
+            set -o pipefail
+            # debug log
+            set -x
+
+            # write your script here
+            echo "Hello World!"
+
+            current_dir=$(pwd)
+            echo "current_dir=${current_dir}"
+
+            # 列出当前目录下的文件和文件夹，并通过grep过滤出文件夹
+            folders=$(ls -l | grep '^d' | awk '{print $9}')
+
+            # 打印文件夹列表
+            echo "当前目录下的文件夹有:"
+            echo "$folders"
+
+            # or run a script from your repository, like:
+            # bash ./path/to/script.sh
+            # not just bash, e.g.:
+            # ruby ./path/to/script.rb
+
+            GLOBAL_APP_VERSION=$(grep -m 1 -w "var GLOBAL_APP_VERSION ="  Coins/coins/build.gradle | tr -cd "[0-9]")
+            echo "GLOBAL_APP_VERSION=${GLOBAL_APP_VERSION}"
+
+            MAJOR_FEATURE_VERSION=$(grep -m 1 -w "var MAJOR_FEATURE_VERSION =" Coins/coins/build.gradle | tr -cd "[0-9]")
+            echo "MAJOR_FEATURE_VERSION=${MAJOR_FEATURE_VERSION}"
+
+            MINOR_FEATURE_VERSION=$(grep -m 1 -w "var MINOR_FEATURE_VERSION =" Coins/coins/build.gradle | tr -cd "[0-9]")
+            echo "MINOR_FEATURE_VERSION=${MINOR_FEATURE_VERSION}"
+
+            BUGFIX_VERSION=$(grep -m 1 -w "var BUGFIX_VERSION =" Coins/coins/build.gradle | tr -cd "[0-9]")
+            echo "BUGFIX_VERSION=${BUGFIX_VERSION}"
+
+            appVersion="${GLOBAL_APP_VERSION}.${MAJOR_FEATURE_VERSION}.${MINOR_FEATURE_VERSION}.${BUGFIX_VERSION}"
+
+            envman add --key Coins_Android_App_Version --value "$appVersion"
+
+            if [[ "${BITRISE_GIT_BRANCH}" == master ]] || [[ "${BITRISE_GIT_BRANCH}" == hotfix/* ]] || [[ "${BITRISE_GIT_BRANCH}" == release/* ]]; then
+              echo "currrent branch:${BITRISE_GIT_BRANCH} conforms master or hotfix/* or release/* format"
+            else
+              echo "currrent branch:${BITRISE_GIT_BRANCH} must conforms hotfix/* or release/* format"
+              exit 1
+            fi
+
+            echo "appVersion=${appVersion}"
+    - slack@4:
+        inputs:
+        - channel: C072299UL5U
+        - pretext: "*Build Start!! :rocket::rocket::rocket:"
+        - fields: |
+            Version|${Coins_Android_App_Version}
+            App|${BITRISE_APP_TITLE}
+            Branch|${BITRISE_GIT_BRANCH}
+            Pipeline|${BITRISEIO_PIPELINE_TITLE}
+            Workflow|${BITRISE_TRIGGERED_WORKFLOW_ID}
+        - buttons: |
+            View App|${BITRISE_APP_URL}
+            View Pipeline Build|${BITRISEIO_PIPELINE_BUILD_URL}
+            View Workflow Build|${BITRISE_BUILD_URL}
+        - webhook_url_on_error: "$SLACK_WEB_HOOK_URL_ANDROID"
+        - channel_on_error: C072299UL5U
+        - text_on_error: "*Build FAILED!! :catcrying::catcrying::catcrying:"
+        - pretext_on_error: "*Build FAILED!! :catcrying::catcrying::catcrying:"
+        - webhook_url: "$SLACK_WEB_HOOK_URL_ANDROID"
+    - install-missing-android-tools@3:
+        inputs:
+        - gradlew_path: "$PROJECT_LOCATION/gradlew"
+    - android-lint@0:
+        inputs:
+        - project_location: "$PROJECT_LOCATION"
+        - module: "$MODULE"
+        - variant: "$PL_VARIANT_HUAWEI_PROD_RELEASE"
+    - gradle-runner@2.0:
+        inputs:
+        - gradle_task: bundleHuaweiProdRelease
+        is_always_run: true
+    - android-build@1:
+        inputs:
+        - module: "$MODULE"
+        - variant: "$PL_VARIANT_HUAWEI_PROD_RELEASE"
+        - project_location: "$PROJECT_LOCATION"
+    - android-build@1:
+        inputs:
+        - module: "$MODULE"
+        - variant: "$PL_VARIANT_HUAWEI_PROD_RELEASE"
+        - build_type: aab
+        - project_location: "$PROJECT_LOCATION"
+    - sign-apk@1:
+        inputs:
+        - debuggable_permitted: 'false'
+        - use_apk_signer: 'true'
+        - signer_scheme: v4
+        - android_app: "$BITRISE_APK_PATH|$BITRISE_AAB_PATH"
+    - appgallery-deploy@1.5:
+        is_always_run: false
+        inputs:
+        - huawei_client_id: '620185827820963008'
+        - huawei_client_secret: "$HUAWEI_APP_GALLERY_API_KEY"
+        - release_type: By Phase
+        - submit_for_review: 'false'
+        - phase_release_percentage: '1'
+        - phase_release_description: 1% of users
+        - file_path: "$BITRISE_SIGNED_AAB_PATH"
+        - huawei_filename: app_release_${BITRISE_BUILD_NUMBER}.aab
+        - huawei_app_id: 100996255
+    - script@1:
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            # fail if any commands fails
+            set -e
+            # debug log
+            set -x
+
+            # write your script here
+            echo "Removing temporary build files"
+            find . -name "Coins-coins-mapping*.txt" -type f -delete
+            find . -name "coins-prod-release*.aab" -type f -delete
+            find . -name "Coins-coins-prod-release.a*" -type f -delete
+        - working_dir: "$BITRISE_DEPLOY_DIR"
+        - is_debug: 'yes'
+    - deploy-to-bitrise-io@2:
+        inputs:
+        - generate_universal_apk_if_none: 'false'
+    - cache-push@2: {}
+    - slack@4:
+        inputs:
+        - channel: C072299UL5U
+        - pretext: "@amber *Build Succeeded!!* :tada::tada::tada:"
+        - fields: |
+            Version|${Coins_Android_App_Version}
+            App|${BITRISE_APP_TITLE}
+            Branch|${BITRISE_GIT_BRANCH}
+            Pipeline|${BITRISEIO_PIPELINE_TITLE}
+            Workflow|${BITRISE_TRIGGERED_WORKFLOW_ID}
+        - buttons: |
+            View App|${BITRISE_APP_URL}
+            View Pipeline Build|${BITRISEIO_PIPELINE_BUILD_URL}
+            View Workflow Build|${BITRISE_BUILD_URL}
+        - webhook_url_on_error: "$SLACK_WEB_HOOK_URL_ANDROID"
+        - text_on_error: 'Build Failed!! :catcrying::catcrying::catcrying:'
+        - pretext_on_error: 'Build Failed!! :catcrying::catcrying::catcrying:'
+        - webhook_url: "$SLACK_WEB_HOOK_URL_ANDROID"
+    envs:
+    - ANDROID_KEYSTORE_URL: "$HOME/keystores/upload.jks"
+    - APP_PACKAGE_NAME: asia.coins.mobile
+    - GRADLE_BUILD_FILE_PATH: Coins/build.gradle
+      opts:
+        is_expand: false
+    - opts:
+        is_expand: false
+      GRADLEW_PATH: Coins/gradlew
+    - opts:
+        is_expand: false
+      PL_VARIANT_HUAWEI_PROD_RELEASE: HuaweiProdRelease
+    description: ''
+  unitTests:
+    steps:
+    - set-java-version@1:
+        inputs:
+        - set_java_version: '17'
+    - activate-ssh-key@4:
+        run_if: '{{getenv "SSH_RSA_PRIVATE_KEY" | ne ""}}'
+    - gitlab-status@0:
+        inputs:
+        - private_token: "$GITLAB_TOKEN"
+        - api_base_url: https://gitlab.diskarte.net/api/v4
+        - preset_status: running
+    - git-clone@8:
+        inputs:
+        - merge_pr: 'no'
+    - cache-pull@2: {}
+    - install-missing-android-tools@3:
+        inputs:
+        - gradlew_path: "$PROJECT_LOCATION/gradlew"
+    - gradle-runner@2:
+        inputs:
+        - app_file_include_filter: |-
+            *.apk
+            *.aab
+        - test_apk_file_include_filter: ''
+        - mapping_file_include_filter: ''
+        - gradle_options: "--no-daemon"
+        - gradle_task: lintGoogleProdRelease
+    - android-unit-test@1:
+        inputs:
+        - project_location: "$PROJECT_LOCATION"
+        - module: "$MODULE"
+        - arguments: ''
+        - variant: "$PL_VARIANT_GOOGLE_QA_RELEASE"
+        - report_path_pattern: "*build/reports"
+    - script@1:
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            # fail if any commands fails
+            set -e
+            # debug log
+            set -x
+
+            unzip $BITRISE_DEPLOY_DIR/coins-reports.zip -d $BITRISE_DEPLOY_DIR
+    - deploy-to-bitrise-io@2: {}
+    - cache-push@2: {}
+    - gitlab-status@0:
+        inputs:
+        - private_token: "$GITLAB_TOKEN"
+        - api_base_url: https://gitlab.diskarte.net/api/v4
+    envs:
+    - opts:
+        is_expand: false
+      GRADLE_BUILD_FILE_PATH: Coins/build.gradle
+    - opts:
+        is_expand: false
+      GRADLEW_PATH: Coins/gradlew
+    - opts:
+        is_expand: false
+      PL_VARIANT_GOOGLE_QA_RELEASE: GoogleQaRelease
+    - TEST_VARIANT_GOOGLE_CODE_COVERAGE: testGoogleQaDebugUnitTestCoverage
+    - JACOCO_HTML_DIR: "$BITRISE_DEPLOY_DIR/jacoco/$TEST_VARIANT_GOOGLE_CODE_COVERAGE/html"
+app:
+  envs:
+  - opts:
+      is_expand: false
+    PROJECT_LOCATION: Coins
+  - opts:
+      is_expand: false
+    MODULE: coins
+  - opts:
+      is_expand: false
+    AUTOMATION_BUILD_SLUG: 004404eacf385360
+  - opts:
+      is_expand: false
+    FIREBASE_APP_ID: 1:927673799308:android:e489e658d86580d2
+  - opts:
+      is_expand: false
+    FIREBASE_APP_ID_ANDROID_STAGE: 1:918106176243:android:6ecd2206dbb0df75c4d586
+  - opts:
+      is_expand: false
+    GRADLE_OPTS: -Dorg.gradle.jvmargs="-Xms2g -Xmx8g -XX:MaxMetaspaceSize=1024m
+      -Dfile.encoding=UTF-8 -XX:+UseParallelGC"
+  - opts:
+      is_expand: false
+    JAVA_OPTS: "-Xms2g -Xmx8g -XX:MaxMetaspaceSize=1024m -Dfile.encoding=UTF-8
+      -XX:+UseParallelGC"
+trigger_map:
+- pull_request_target_branch: "*"
+  type: pull_request
+  workflow: unitTests
+meta:
+  bitrise.io:
+    stack: linux-docker-android-22.04
+    machine_type_id: elite
